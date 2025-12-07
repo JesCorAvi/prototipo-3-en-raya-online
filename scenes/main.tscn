@@ -61,7 +61,7 @@ offset_left = 43.0
 offset_top = 100.0
 offset_right = 137.0
 offset_bottom = 131.0
-text = "CrearJuego"
+text = "Crear Juego"
 
 [node name="JoinButton" type="Button" parent="."]
 offset_left = 44.0

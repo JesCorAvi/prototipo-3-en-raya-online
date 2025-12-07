@@ -246,7 +246,7 @@ func reset_game(keep_active: bool = false):
 	if not multiplayer.has_multiplayer_peer() or not game_active:
 		enable_network_buttons()
 		grid_container.hide() 
-		status_label.text = "Presiona Host o Join para empezar."
+		status_label.text = "Presiona Crear Juego o Unirse para empezar."
 	elif multiplayer.is_server() and not game_active:
 		status_label.text = "Host listo. Esperando al oponente..."
 
