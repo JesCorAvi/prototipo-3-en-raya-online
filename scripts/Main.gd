@@ -94,7 +94,7 @@ func _player_connected(id: int):
 			
 			game_active = true
 			current_player = PLAYER_X
-			var text = _get_turn_status_message(PLAYER_X) # Usar función personalizada
+			var text = _get_turn_status_message(PLAYER_X) 
 			status_label.text = text
 			
 			grid_container.show()
@@ -167,7 +167,6 @@ func register_move(index: int, symbol: int):
 		else:
 			result_text = "PERDISTE"
 			result_color = Color.RED 
-		# --------------------------------------------------
 
 		status_label.text = "" 
 		result_label.text = result_text
