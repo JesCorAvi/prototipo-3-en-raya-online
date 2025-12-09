@@ -1,28 +1,42 @@
 extends RigidBody2D
 
+@export var player_symbol: int = 1
+@export var is_dragging: bool = false
+
+var current_cell_index: int = -1 
+var original_position: Vector2
+var is_returning: bool = false
+var offset: Vector2 = Vector2.ZERO
+var drag_target_position: Vector2 = Vector2.ZERO
+var last_global_pos: Vector2
+var return_target_pos: Vector2
+
+const PIECE_SIZE = 128.0
+
 @onready var main_script = get_node("/root/Main")
 @onready var panel: Panel = $Panel
 @onready var label: Label = $Label
-
-@export var player_symbol: int = 1 # 1 = X, 2 = O
-
-var original_position: Vector2
-var is_dragging: bool = false
-var offset: Vector2 = Vector2.ZERO
-var last_global_pos: Vector2 # Para el cálculo de la inercia
-
+@onready var collision_shape: CollisionShape2D = $CollisionShape2D
 
 func _ready():
 	original_position = global_position
+	return_target_pos = original_position
 	set_as_top_level(true)
 	update_symbol()
-	
 	lock_rotation = true
-	freeze = false # Cuerpo activo (equivale al antiguo MODE_RIGID)
-	
+	freeze = false
+	z_index = 0
 	await get_tree().process_frame
 	last_global_pos = global_position
 
+func _integrate_forces(state):
+	var vp_size = get_viewport_rect().size
+	var current_pos = state.transform.origin
+	
+	var clamped_x = clamp(current_pos.x, 0.0, vp_size.x - PIECE_SIZE)
+	var clamped_y = clamp(current_pos.y, 0.0, vp_size.y - PIECE_SIZE)
+	
+	state.transform.origin = Vector2(clamped_x, clamped_y)
 
 func update_symbol():
 	var symbol := ""
@@ -46,81 +60,100 @@ func update_symbol():
 	label.add_theme_color_override("font_color", color)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-
-	# Configurar estilo visual del Panel
+	
 	var stylebox := StyleBoxFlat.new()
 	stylebox.bg_color = panel_color
-	stylebox.corner_radius_top_left = 12
-	stylebox.corner_radius_top_right = 12
-	stylebox.corner_radius_bottom_left = 12
-	stylebox.corner_radius_bottom_right = 12
+	stylebox.set_corner_radius_all(12)
 	panel.add_theme_stylebox_override("panel", stylebox)
 
-
-func _physics_process(delta):
-	# Calcula la velocidad (para la inercia) solo mientras se arrastra
-	if is_dragging:
-		linear_velocity = (global_position - last_global_pos) / delta
+func _physics_process(_delta):
+	collision_shape.disabled = is_dragging
 	
+	if is_dragging:
+		var direction = drag_target_position - global_position
+		linear_velocity = direction * 25.0 
+		
+	elif is_returning:
+		var direction = return_target_pos - global_position
+		linear_velocity = direction * 15.0 
+		
+		if direction.length_squared() < 50.0:
+			global_position = return_target_pos
+			linear_velocity = Vector2.ZERO
+			is_returning = false
+			freeze = true
+
 	last_global_pos = global_position
 
-
 func _input(event):
+	if not multiplayer.has_multiplayer_peer(): return
+	var my_id = multiplayer.get_unique_id()
+	if get_multiplayer_authority() != my_id: return
+		
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
-				# Verificar si se hizo clic dentro del Panel
 				if panel.get_global_rect().has_point(event.global_position):
 					if main_script.player_symbol != player_symbol:
 						main_script.status_label.text = "Solo puedes mover tus propias piezas."
 						return
 					
-					if main_script.get_my_pieces_left() <= 0:
-						main_script.status_label.text = "¡Ya no te quedan piezas para colocar!"
-						return
-					
 					is_dragging = true
-					z_index = 10
+					is_returning = false 
+					z_index = 99
+					
 					offset = event.global_position - global_position
+					drag_target_position = _clamp_vector(event.global_position - offset)
 					
-					# Congelar la física mientras se arrastra
-					freeze = true
-					linear_velocity = Vector2.ZERO
-					angular_velocity = 0.0
-					
+					freeze = false 
 					get_viewport().set_input_as_handled()
 			else:
 				if is_dragging:
 					is_dragging = false
 					z_index = 0
-
-					var cell_index = check_drop_target(event.global_position)
 					
-					# Reactivar la física
-					freeze = false
+					var drop_pos = event.global_position
+					var new_cell_index = check_drop_target(drop_pos)
 					
-					if cell_index != -1:
-						if main_script.board[cell_index] == main_script.EMPTY:
-							main_script.attempt_place_piece(cell_index)
+					if new_cell_index != -1:
+						var is_occupied = main_script.board[new_cell_index] != main_script.EMPTY
+						var is_same_cell = (new_cell_index == current_cell_index)
+						
+						if is_occupied and not is_same_cell:
+							main_script.status_label.text = "¡Casilla ocupada!"
+							return_to_last_valid_pos()
 						else:
-							main_script.status_label.text = "¡Esa casilla ya está ocupada!"
-					
-					# Si no se colocó o la celda está ocupada, la pieza vuelve a su posición original
-					if cell_index == -1 or main_script.board[cell_index] != main_script.EMPTY:
-						global_position = original_position
-						linear_velocity = Vector2.ZERO
-					
+							var cell_node = main_script.cell_nodes[new_cell_index]
+							var target_pos = cell_node.global_position + cell_node.size / 2.0
+							main_script.attempt_place_piece(new_cell_index, get_path(), target_pos, current_cell_index)
+					else:
+						return_to_last_valid_pos()
+						
 					get_viewport().set_input_as_handled()
 
 	elif event is InputEventMouseMotion and is_dragging:
-		global_position = event.global_position - offset
+		drag_target_position = _clamp_vector(event.global_position - offset)
 		get_viewport().set_input_as_handled()
 
+func _clamp_vector(target: Vector2) -> Vector2:
+	var vp_size = get_viewport_rect().size
+	return Vector2(
+		clamp(target.x, 0, vp_size.x - PIECE_SIZE),
+		clamp(target.y, 0, vp_size.y - PIECE_SIZE)
+	)
 
 func check_drop_target(drop_position: Vector2) -> int:
-	var cell_nodes: Array = main_script.cell_nodes
-	for i in range(cell_nodes.size()):
-		var cell_node: Control = cell_nodes[i]
-		if cell_node.get_global_rect().has_point(drop_position):
+	for i in range(main_script.cell_nodes.size()):
+		if main_script.cell_nodes[i].get_global_rect().has_point(drop_position):
 			return i
 	return -1
+
+func return_to_last_valid_pos():
+	is_returning = true
+	freeze = false 
+	
+	if current_cell_index != -1:
+		var cell = main_script.cell_nodes[current_cell_index]
+		return_target_pos = cell.global_position + cell.size / 2.0 - Vector2(PIECE_SIZE/2.0, PIECE_SIZE/2.0)
+	else:
+		return_target_pos = original_position

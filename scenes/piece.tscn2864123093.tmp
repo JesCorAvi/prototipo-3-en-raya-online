@@ -26,14 +26,11 @@ properties/2/replication_mode = 1
 properties/3/path = NodePath(".:linear_velocity")
 properties/3/spawn = true
 properties/3/replication_mode = 1
-properties/4/path = NodePath(".:is_dragging")
-properties/4/spawn = true
-properties/4/replication_mode = 1
 
 [node name="Piece" type="RigidBody2D"]
 gravity_scale = 0.0
 lock_rotation = true
-linear_damp = 10.0
+linear_damp = 2.0
 script = ExtResource("1_gebih")
 
 [node name="Panel" type="Panel" parent="."]
