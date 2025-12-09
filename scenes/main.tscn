@@ -80,10 +80,10 @@ placeholder_text = "ej. 127.0.0.1"
 
 [node name="ResultLabel" type="Label" parent="."]
 z_index = 7
-offset_left = 12.0
-offset_top = 224.0
-offset_right = 501.0
-offset_bottom = 331.0
+offset_left = 345.0
+offset_top = 298.0
+offset_right = 834.0
+offset_bottom = 405.0
 theme_override_font_sizes/font_size = 64
 horizontal_alignment = 1
 vertical_alignment = 1

@@ -20,6 +20,7 @@ var remote_cursors: Dictionary = {}
 var cursor_scene: PackedScene
 var piece_scene: PackedScene
 var cell_nodes: Array = []
+var highlight_material: ShaderMaterial
 
 @onready var grid_container: GridContainer = $GridContainer
 @onready var status_label: Label = $StatusLabel
@@ -41,6 +42,15 @@ func _ready():
 	if ResourceLoader.exists(PIECE_SCENE_PATH):
 		piece_scene = load(PIECE_SCENE_PATH)
 	
+	var shader = load("res://shaders/outline_highlight.gdshader")
+	if shader:
+		highlight_material = ShaderMaterial.new()
+		highlight_material.shader = shader
+		highlight_material.set_shader_parameter("color", Color(1, 1, 0, 1))
+		highlight_material.set_shader_parameter("width", 5.0)
+		highlight_material.set_shader_parameter("pattern", 1)
+		highlight_material.set_shader_parameter("add_margins", true)
+
 	multiplayer.peer_connected.connect(_player_connected)
 	multiplayer.peer_disconnected.connect(_player_disconnected)
 	multiplayer.connection_failed.connect(_connection_failed)
@@ -49,7 +59,10 @@ func _ready():
 	btn_add_o.pressed.connect(_on_add_piece_pressed.bind(PLAYER_O))
 	
 	for i in range(BOARD_SIZE):
-		cell_nodes.append(grid_container.get_child(i))
+		var btn = grid_container.get_child(i)
+		cell_nodes.append(btn)
+		btn.mouse_entered.connect(_on_cell_hover.bind(btn, true))
+		btn.mouse_exited.connect(_on_cell_hover.bind(btn, false))
 
 	grid_container.hide()
 	result_label.hide()
@@ -60,6 +73,11 @@ func _process(_delta):
 		var mouse_pos = get_viewport().get_mouse_position()
 		rpc("send_cursor_position", mouse_pos)
 
+func _on_cell_hover(btn: Button, is_hovering: bool):
+	if is_hovering and is_game_active:
+		btn.material = highlight_material
+	else:
+		btn.material = null
 
 func _on_add_piece_pressed(symbol: int):
 	if not is_game_active: return
@@ -87,7 +105,6 @@ func spawn_new_piece(symbol: int):
 	
 	var auth_id = PLAYER_X if symbol == PLAYER_X else player_o_net_id
 	new_piece.set_multiplayer_authority(auth_id)
-
 
 func _on_HostButton_pressed():
 	var peer = ENetMultiplayerPeer.new()
@@ -121,7 +138,7 @@ func _connection_failed():
 func _player_connected(id: int):
 	if multiplayer.is_server():
 		if multiplayer.get_peers().size() == 1:
-			status_label.text = "¡Juego en marcha!"
+			update_piece_counts_ui() # Corrección aquí: actualiza el texto del jugador en lugar de poner "Juego en marcha"
 			grid_container.show()
 			set_pieces_visible(true)
 			is_game_active = true
@@ -293,9 +310,8 @@ func update_board_ui():
 			cell.text = "" 
 
 func update_piece_counts_ui():
-	var my_pieces = get_my_pieces_left()
-	var opponent_pieces = get_opponent_pieces_left()
-	status_label.text = "Tus piezas: " + str(my_pieces) + " | Oponente: " + str(opponent_pieces)
+	var symbol_name = "X" if player_symbol == PLAYER_X else "O"
+	status_label.text = "Eres el jugador: " + symbol_name
 
 func get_my_pieces_left() -> int:
 	return pieces_left_X if player_symbol == PLAYER_X else pieces_left_O
