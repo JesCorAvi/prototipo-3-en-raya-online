@@ -1,0 +1,13 @@
+[gd_scene load_steps=3 format=3 uid="uid://3rsc6mcmas4n"]
+
+[ext_resource type="Script" uid="uid://3jnlud2y41of" path="res://scripts/piece.gd" id="1_gebih"]
+[ext_resource type="Texture2D" uid="uid://coe6sylpknklj" path="res://icon.svg" id="1_s58gp"]
+
+[node name="Piece" type="TextureRect"]
+anchors_preset = -1
+anchor_right = 0.032
+anchor_bottom = 0.041
+offset_right = 91.136
+offset_bottom = 95.2
+texture = ExtResource("1_s58gp")
+script = ExtResource("1_gebih")

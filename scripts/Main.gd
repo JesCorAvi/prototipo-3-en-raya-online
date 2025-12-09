@@ -11,11 +11,14 @@ const EMPTY = 0
 
 const DEFAULT_PORT = 10567 
 const MAX_PLAYERS = 2      
+const MAX_PLAYER_PIECES = 3 # Límite de piezas por jugador (3)
 
+# El estado del tablero y el contador de piezas deben sincronizarse.
 var board: Array[int] = [] 
-var current_player: int = PLAYER_X 
-var game_active: bool = false 
 var player_symbol: int 
+
+var pieces_left_X: int = MAX_PLAYER_PIECES
+var pieces_left_O: int = MAX_PLAYER_PIECES
 
 # ==============================================================================
 # --- REFERENCIAS DE NODO (@onready) ---
@@ -30,6 +33,8 @@ var player_symbol: int
 @onready var result_label: Label = $ResultLabel
 @onready var reset_timer: Timer = $ResetTimer   
 
+var cell_nodes: Array = [] 
+
 # ==============================================================================
 # --- FLUJO PRINCIPAL ---
 # ==============================================================================
@@ -37,12 +42,17 @@ var player_symbol: int
 func _ready():
 	multiplayer.peer_connected.connect(_player_connected)
 	multiplayer.peer_disconnected.connect(_player_disconnected)
-	
+	# Manejar el fallo de conexión (TIMEOUT)
 	multiplayer.connection_failed.connect(_connection_failed) 
 	
+	# Obtener las referencias a las celdas de la cuadrícula
+	for i in range(BOARD_SIZE):
+		cell_nodes.append(grid_container.get_child(i))
+
 	grid_container.hide()
 	result_label.hide()
 	reset_game()
+
 # ==============================================================================
 # --- MANEJO DE CONEXIÓN DE RED (HOST/CLIENTE) ---
 # ==============================================================================
@@ -72,139 +82,89 @@ func _on_JoinButton_pressed():
 	status_label.text = "Conectando..."
 	disable_network_buttons() 
 
-# ==============================================================================
-# --- GENERACIÓN DE MENSAJES DE ESTADO ---
-# ==============================================================================
-
-func _get_turn_status_message(player: int) -> String:
-	if not game_active:
-		return ""
-		
-	if player == player_symbol:
-		return "¡Tu turno!"
-	else:
-		return "Turno del contrincante"
-
-# ==============================================================================
-# --- SINCRONIZACIÓN DE ESTADO (RPC) ---
-# ==============================================================================
+func _connection_failed():
+	status_label.text = "Error: No se pudo conectar al servidor. Reintentar o crear Host."
+	reset_game(false)
 
 func _player_connected(id: int):
 	if multiplayer.is_server():
 		if multiplayer.get_peers().size() == 1:
-			
-			game_active = true
-			current_player = PLAYER_X
-			var text = _get_turn_status_message(PLAYER_X) 
-			status_label.text = text
-			
+			status_label.text = "¡Jugador O conectado! Juego en tiempo real."
 			grid_container.show()
-
-			rpc("sync_game_state", game_active, current_player, text)
+			# Sincronizar estado inicial
+			rpc("sync_game_state", board, pieces_left_X, pieces_left_O)
 
 @rpc("any_peer") 
-func sync_game_state(new_game_active: bool, new_current_player: int, status_text: String):
-	game_active = new_game_active
-	current_player = new_current_player
+func sync_game_state(new_board: Array[int], new_pieces_X: int, new_pieces_O: int):
+	# Recibe el estado del juego desde el servidor
+	board = new_board
+	pieces_left_X = new_pieces_X
+	pieces_left_O = new_pieces_O
 	
-	status_label.text = _get_turn_status_message(new_current_player)
+	update_board_ui()
+	update_piece_counts_ui()
+	disable_network_buttons()
+	grid_container.show()
 	
-	if game_active:
-		disable_network_buttons()
-		grid_container.show()
-
 func _player_disconnected(id: int):
-	if game_active:
-		status_label.text = "¡El oponente se desconectó! Juego terminado."
-		reset_game(false)
-
-@rpc("any_peer") 
-func update_status_message(message: String):
-	status_label.text = message
-
-# ==============================================================================
-# --- LÓGICA DEL JUEGO (MOVIMIENTOS) ---
-# ==============================================================================
-
-func _on_CellButton_pressed(index: int):
-	if not game_active:
-		status_label.text = "El juego aún no ha comenzado o ya terminó."
-		return
-		
-	if board[index] == EMPTY:
-		rpc("register_move", index, player_symbol)
-	else:
-		status_label.text = "Casilla ocupada."
-
-@rpc("any_peer", "call_local")
-func register_move(index: int, symbol: int):
-	if not game_active or board[index] != EMPTY:
-		return
-		
-	if current_player != symbol:
-		var caller_id = multiplayer.get_remote_sender_id() 
-		var error_message = "¡No es tu turno! Espera a " + ("O" if current_player == PLAYER_O else "X")
-		
-		if caller_id > 1:
-			rpc_id(caller_id, "update_status_message", error_message)
-		else:
-			status_label.text = error_message
-			
-		return
-		
-	board[index] = symbol
-	var button: Button = grid_container.get_child(index)
-	button.text = "X" if symbol == PLAYER_X else "O"
-	button.disabled = true 
-	
-	if check_win(symbol):
-		game_active = false
-		var result_text: String
-		var result_color: Color
-		
-		if symbol == player_symbol:
-			result_text = "¡GANASTE!"
-			result_color = Color.GREEN 
-		else:
-			result_text = "PERDISTE"
-			result_color = Color.RED 
-
-		status_label.text = "" 
-		result_label.text = result_text
-		result_label.add_theme_color_override("font_color", result_color)
-		
-		rpc("game_over", result_text)
-	elif check_tie():
-		game_active = false
-		var result_text = "¡EMPATE!"
-		
-		status_label.text = "" 
-		result_label.text = result_text
-		result_label.remove_theme_color_override("font_color")
-		
-		rpc("game_over", result_text)
-	else:
-		current_player = PLAYER_O if current_player == PLAYER_X else PLAYER_X
-		status_label.text = _get_turn_status_message(current_player)
-
-@rpc("call_local")
-func game_over(result_text: String):
-	game_active = false
-	
-	result_label.show() 
-	
-	reset_timer.start() 
-
-# ==============================================================================
-# --- MANEJO DEL TEMPORIZADOR ---
-# ==============================================================================
-
-func _on_ResetTimer_timeout():
+	status_label.text = "¡El oponente se desconectó! Juego terminado."
 	reset_game(false)
 
+# ==============================================================================
+# --- LÓGICA DEL JUEGO (MOVIMIENTOS EN TIEMPO REAL) ---
+# ==============================================================================
+
+# Esta función DEBE ser llamada desde la lógica de Drag-and-Drop 
+# cuando una pieza del jugador local es soltada en la celda 'index'.
+func attempt_place_piece(index: int):
+	var my_pieces_left = get_my_pieces_left()
+	
+	if not multiplayer.has_multiplayer_peer():
+		status_label.text = "Primero debes unirte a un juego."
+		return
+		
+	if board[index] != EMPTY:
+		status_label.text = "Casilla ocupada."
+		return
+
+	if my_pieces_left <= 0:
+		status_label.text = "¡Ya has colocado tus 3 piezas! Espera el resultado."
+		return
+
+	# Si es válido, enviamos la acción a todos (servidor y clientes)
+	# Usamos @rpc("any_peer", "call_local") para que todos procesen el movimiento.
+	rpc("place_piece", index, player_symbol)
+
+@rpc("any_peer", "call_local")
+func place_piece(index: int, symbol: int):
+	# Verificación estricta contra movimientos inválidos
+	var pieces_ref: int = pieces_left_X if symbol == PLAYER_X else pieces_left_O
+	
+	if board[index] != EMPTY or pieces_ref <= 0:
+		# Movimiento inválido o pieza agotada. Ignorar.
+		return
+		
+	# 1. Actualizar el estado del juego
+	board[index] = symbol
+	
+	# 2. Actualizar el contador de piezas
+	if symbol == PLAYER_X:
+		pieces_left_X -= 1
+	elif symbol == PLAYER_O:
+		pieces_left_O -= 1
+	
+	# 3. Actualizar la UI
+	update_board_ui()
+	update_piece_counts_ui()
+	
+	# 4. Comprobar victoria/fin de juego
+	if check_win(symbol):
+		game_over(symbol)
+	elif pieces_left_X == 0 and pieces_left_O == 0:
+		game_over(0) # Empate (ambos agotaron sus piezas)
 
 # ==============================================================================
-# --- LÓGICA DE JUEGO (GANAR/EMPATAR) ---
+# --- LÓGICA DE JUEGO (GANAR/FIN) ---
 # ==============================================================================
 
 func check_win(symbol: int) -> bool:
@@ -219,42 +179,118 @@ func check_win(symbol: int) -> bool:
 			return true
 	return false
 
-func check_tie() -> bool:
-	return not board.has(EMPTY)
+func game_over(winning_symbol: int):
+	var result_text: String
+	var result_color: Color
+	
+	if winning_symbol == 0:
+		result_text = "¡EMPATE!"
+		result_color = Color.WHITE
+	else:
+		var winner_name = "X" if winning_symbol == PLAYER_X else "O"
+		result_text = "¡GANA " + winner_name + "!"
+		
+		# Determinar color para el jugador local
+		result_color = Color.RED 
+		if winning_symbol == player_symbol:
+			result_color = Color.GREEN 
+
+	# Llamada directa a la función local. La lógica de sincronización está en place_piece.
+	show_game_result(result_text, result_color)
+
+# Función local para mostrar el resultado final
+func show_game_result(result_text: String, color: Color):
+	# Mostrar el resultado final a todos
+	status_label.text = "" 
+	result_label.text = result_text
+	result_label.add_theme_color_override("font_color", color)
+	result_label.show() 
+	
+	reset_timer.start() # Iniciar el temporizador para reiniciar
+
+# ==============================================================================
+# --- MANEJO DEL TEMPORIZADOR Y REINICIO ---
+# ==============================================================================
+
+func _on_ResetTimer_timeout():
+	if multiplayer.is_server():
+		# El host reinicia y sincroniza el nuevo estado con todos
+		reset_game(true)
+		rpc("sync_game_state", board, pieces_left_X, pieces_left_O)
+	else:
+		# Los clientes esperan a la sincronización del host
+		reset_game(false)
+
 
 # ==============================================================================
 # --- CONTROL DE UI Y ESTADO ---
 # ==============================================================================
 
-func reset_game(keep_active: bool = false):
+func reset_game(keep_peer: bool = false):
+	# Reinicia el tablero y los contadores
 	board.resize(BOARD_SIZE)
 	board.fill(EMPTY)
-	current_player = PLAYER_X
-	game_active = keep_active
+	pieces_left_X = MAX_PLAYER_PIECES
+	pieces_left_O = MAX_PLAYER_PIECES
 	
-	for i in range(BOARD_SIZE):
-		var button: Button = grid_container.get_child(i)
-		button.text = ""
-		button.disabled = false
-	
-	if multiplayer.has_multiplayer_peer():
-		multiplayer.multiplayer_peer = null 
+	update_board_ui()
+	update_piece_counts_ui()
 	
 	result_label.hide()
-	reset_timer.stop()  
+	reset_timer.stop()
+	
+	if not keep_peer and multiplayer.has_multiplayer_peer():
+		multiplayer.multiplayer_peer = null 
 
-	if not multiplayer.has_multiplayer_peer() or not game_active:
+	if not keep_peer or not multiplayer.has_multiplayer_peer():
 		enable_network_buttons()
 		grid_container.hide() 
 		status_label.text = "Presiona Crear Juego o Unirse para empezar."
-	elif multiplayer.is_server() and not game_active:
-		status_label.text = "Host listo. Esperando al oponente..."
+	elif multiplayer.is_server() and keep_peer:
+		status_label.text = "Juego reiniciado. Esperando al oponente (x" + str(get_my_pieces_left()) + ")"
+
+func update_board_ui():
+	# Actualiza la representación visual del tablero
+	for i in range(BOARD_SIZE):
+		var cell = cell_nodes[i] 
+		var symbol = board[i]
+		
+		# NOTA: Si cambiaste los botones por otros nodos (ej. Panel o ColorRect), 
+		# deberás adaptar la forma de mostrar el símbolo aquí.
+		if cell is Button: 
+			var button_cell: Button = cell
+			if symbol == PLAYER_X:
+				button_cell.text = "X"
+			elif symbol == PLAYER_O:
+				button_cell.text = "O"
+			else:
+				button_cell.text = ""
+
+func update_piece_counts_ui():
+	# Esta función actualiza el contador de piezas disponibles
+	var my_pieces = get_my_pieces_left()
+	var opponent_pieces = get_opponent_pieces_left()
+	
+	status_label.text = "Te quedan " + str(my_pieces) + " piezas. Oponente: " + str(opponent_pieces)
+
+func get_my_pieces_left() -> int:
+	if player_symbol == PLAYER_X:
+		return pieces_left_X
+	elif player_symbol == PLAYER_O:
+		return pieces_left_O
+	return 0
+	
+func get_opponent_pieces_left() -> int:
+	if player_symbol == PLAYER_X:
+		return pieces_left_O
+	elif player_symbol == PLAYER_O:
+		return pieces_left_X
+	return 0
 
 func enable_network_buttons():
 	host_button.show()
 	join_button.show()
 	ip_input.show()
-	
 	host_button.disabled = false
 	join_button.disabled = false
 	ip_input.editable = true
@@ -263,12 +299,6 @@ func disable_network_buttons():
 	host_button.hide()
 	join_button.hide()
 	ip_input.hide()
-	
 	host_button.disabled = true
 	join_button.disabled = true
 	ip_input.editable = false
-	
-func _connection_failed():
-	status_label.text = "Error: No se pudo conectar al servidor."
-	
-	reset_game(false)
