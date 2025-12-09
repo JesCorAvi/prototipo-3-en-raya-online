@@ -38,10 +38,11 @@ func _ready():
 	multiplayer.peer_connected.connect(_player_connected)
 	multiplayer.peer_disconnected.connect(_player_disconnected)
 	
+	multiplayer.connection_failed.connect(_connection_failed) 
+	
 	grid_container.hide()
 	result_label.hide()
 	reset_game()
-
 # ==============================================================================
 # --- MANEJO DE CONEXIÓN DE RED (HOST/CLIENTE) ---
 # ==============================================================================
@@ -266,3 +267,8 @@ func disable_network_buttons():
 	host_button.disabled = true
 	join_button.disabled = true
 	ip_input.editable = false
+	
+func _connection_failed():
+	status_label.text = "Error: No se pudo conectar al servidor."
+	
+	reset_game(false)
