@@ -138,7 +138,7 @@ func _connection_failed():
 func _player_connected(id: int):
 	if multiplayer.is_server():
 		if multiplayer.get_peers().size() == 1:
-			update_piece_counts_ui() # Corrección aquí: actualiza el texto del jugador en lugar de poner "Juego en marcha"
+			update_piece_counts_ui()
 			grid_container.show()
 			set_pieces_visible(true)
 			is_game_active = true
@@ -197,8 +197,8 @@ func attempt_place_piece(new_index: int, piece_path: String, target_pos: Vector2
 	if not multiplayer.has_multiplayer_peer():
 		status_label.text = "Primero debes unirte a un juego."
 		return
-		
-	if board[new_index] != EMPTY and new_index != old_index:
+	
+	if new_index != -1 and board[new_index] != EMPTY and new_index != old_index:
 		status_label.text = "Casilla ocupada."
 		var p = get_node(piece_path)
 		if p: p.return_to_last_valid_pos()
@@ -208,17 +208,21 @@ func attempt_place_piece(new_index: int, piece_path: String, target_pos: Vector2
 
 @rpc("any_peer", "call_local")
 func place_piece(new_index: int, symbol: int, piece_path: String, target_pos: Vector2, old_index: int):
-	if board[new_index] != EMPTY and new_index != old_index:
+	if new_index != -1 and board[new_index] != EMPTY and new_index != old_index:
 		return
 		
 	if old_index != -1:
 		board[old_index] = EMPTY
 	
-	board[new_index] = symbol
+	if new_index != -1:
+		board[new_index] = symbol
 	
 	var piece_node: RigidBody2D = get_node(piece_path)
 	if is_instance_valid(piece_node):
 		piece_node.global_position = target_pos - Vector2(64, 64)
+		
+		piece_node.original_position = piece_node.global_position
+		
 		piece_node.current_cell_index = new_index
 		piece_node.freeze = true
 		piece_node.is_dragging = false
@@ -229,7 +233,7 @@ func place_piece(new_index: int, symbol: int, piece_path: String, target_pos: Ve
 	update_board_ui()
 	update_piece_counts_ui()
 	
-	if check_win(symbol):
+	if new_index != -1 and check_win(symbol):
 		game_over(symbol)
 
 func check_win(symbol: int) -> bool:

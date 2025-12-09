@@ -10,6 +10,7 @@ var offset: Vector2 = Vector2.ZERO
 var drag_target_position: Vector2 = Vector2.ZERO
 var last_global_pos: Vector2
 var return_target_pos: Vector2
+var highlight_material: ShaderMaterial
 
 const PIECE_SIZE = 128.0
 
@@ -26,17 +27,39 @@ func _ready():
 	lock_rotation = true
 	freeze = false
 	z_index = 0
+
+	var shader = load("res://shaders/outline_highlight.gdshader")
+	if shader:
+		highlight_material = ShaderMaterial.new()
+		highlight_material.shader = shader
+		highlight_material.set_shader_parameter("color", Color(1, 1, 0, 1))
+		highlight_material.set_shader_parameter("width", 5.0)
+		highlight_material.set_shader_parameter("pattern", 1)
+		highlight_material.set_shader_parameter("add_margins", true)
+
+	panel.mouse_entered.connect(_on_panel_hover.bind(true))
+	panel.mouse_exited.connect(_on_panel_hover.bind(false))
+
 	await get_tree().process_frame
 	last_global_pos = global_position
 
-func _integrate_forces(state):
-	var vp_size = get_viewport_rect().size
-	var current_pos = state.transform.origin
+
+func _physics_process(_delta):
+	collision_shape.disabled = is_dragging
 	
-	var clamped_x = clamp(current_pos.x, 0.0, vp_size.x - PIECE_SIZE)
-	var clamped_y = clamp(current_pos.y, 0.0, vp_size.y - PIECE_SIZE)
-	
-	state.transform.origin = Vector2(clamped_x, clamped_y)
+	if is_dragging:
+		var direction = drag_target_position - global_position
+		linear_velocity = direction * 25.0 
+	else:
+		linear_velocity = Vector2.ZERO
+
+	last_global_pos = global_position
+
+func _on_panel_hover(is_hovering: bool):
+	if is_hovering and not is_dragging:
+		panel.material = highlight_material
+	else:
+		panel.material = null
 
 func update_symbol():
 	var symbol := ""
@@ -66,25 +89,6 @@ func update_symbol():
 	stylebox.set_corner_radius_all(12)
 	panel.add_theme_stylebox_override("panel", stylebox)
 
-func _physics_process(_delta):
-	collision_shape.disabled = is_dragging
-	
-	if is_dragging:
-		var direction = drag_target_position - global_position
-		linear_velocity = direction * 25.0 
-		
-	elif is_returning:
-		var direction = return_target_pos - global_position
-		linear_velocity = direction * 15.0 
-		
-		if direction.length_squared() < 50.0:
-			global_position = return_target_pos
-			linear_velocity = Vector2.ZERO
-			is_returning = false
-			freeze = true
-
-	last_global_pos = global_position
-
 func _input(event):
 	if not multiplayer.has_multiplayer_peer(): return
 	var my_id = multiplayer.get_unique_id()
@@ -99,6 +103,7 @@ func _input(event):
 						return
 					
 					is_dragging = true
+					panel.material = null
 					is_returning = false 
 					z_index = 99
 					
@@ -124,10 +129,13 @@ func _input(event):
 							return_to_last_valid_pos()
 						else:
 							var cell_node = main_script.cell_nodes[new_cell_index]
-							var target_pos = cell_node.global_position + cell_node.size / 2.0
+							var target_pos = cell_node.get_global_rect().get_center()
 							main_script.attempt_place_piece(new_cell_index, get_path(), target_pos, current_cell_index)
 					else:
-						return_to_last_valid_pos()
+
+						var free_drop_pos = global_position + Vector2(64, 64)
+						
+						main_script.attempt_place_piece(-1, get_path(), free_drop_pos, current_cell_index)
 						
 					get_viewport().set_input_as_handled()
 
@@ -150,10 +158,22 @@ func check_drop_target(drop_position: Vector2) -> int:
 
 func return_to_last_valid_pos():
 	is_returning = true
-	freeze = false 
+	freeze = true 
+	collision_shape.set_deferred("disabled", true)
 	
 	if current_cell_index != -1:
 		var cell = main_script.cell_nodes[current_cell_index]
-		return_target_pos = cell.global_position + cell.size / 2.0 - Vector2(PIECE_SIZE/2.0, PIECE_SIZE/2.0)
+		var center = cell.get_global_rect().get_center()
+		return_target_pos = center - Vector2(PIECE_SIZE/2.0, PIECE_SIZE/2.0)
 	else:
 		return_target_pos = original_position
+
+	var tween = create_tween()
+	tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tween.tween_property(self, "global_position", return_target_pos, 0.3)
+	
+	tween.tween_callback(func():
+		is_returning = false
+		collision_shape.set_deferred("disabled", false)
+		freeze = false
+	)
