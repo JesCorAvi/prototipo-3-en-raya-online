@@ -1,0 +1,26 @@
+[gd_scene load_steps=3 format=3 uid="uid://wjnkqtalvn42"]
+
+[ext_resource type="Script" uid="uid://bevpp33n5oxbn" path="res://scripts/cursor.gd" id="1_1eco6"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_s0nli"]
+corner_radius_top_left = 90
+corner_radius_top_right = 90
+corner_radius_bottom_right = 90
+corner_radius_bottom_left = 90
+
+[node name="Cursor" type="Node2D"]
+z_index = 100
+script = ExtResource("1_1eco6")
+
+[node name="Panel" type="Panel" parent="."]
+offset_left = 9.0
+offset_top = 1.0
+offset_right = 36.0
+offset_bottom = 29.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_s0nli")
+
+[node name="Label" type="Label" parent="."]
+offset_left = 42.0
+offset_right = 116.0
+offset_bottom = 30.0
+vertical_alignment = 1
