@@ -6,7 +6,8 @@
 [node name="Main" type="Node2D"]
 script = ExtResource("1_o5qli")
 
-[node name="GridContainer" type="GridContainer" parent="."]
+[node name="tresenraya" type="GridContainer" parent="."]
+visible = false
 offset_left = 323.99997
 offset_top = 103.99999
 offset_right = 427.99997
@@ -14,42 +15,56 @@ offset_bottom = 208.0
 scale = Vector2(5, 5)
 columns = 3
 
-[node name="0" type="Button" parent="GridContainer"]
+[node name="0" type="Button" parent="tresenraya"]
 custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
 
-[node name="1" type="Button" parent="GridContainer"]
+[node name="1" type="Button" parent="tresenraya"]
 custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 
-[node name="2" type="Button" parent="GridContainer"]
+[node name="2" type="Button" parent="tresenraya"]
 custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 
-[node name="3" type="Button" parent="GridContainer"]
+[node name="3" type="Button" parent="tresenraya"]
 custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 
-[node name="4" type="Button" parent="GridContainer"]
+[node name="4" type="Button" parent="tresenraya"]
 custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 
-[node name="5" type="Button" parent="GridContainer"]
+[node name="5" type="Button" parent="tresenraya"]
 custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 
-[node name="6" type="Button" parent="GridContainer"]
+[node name="6" type="Button" parent="tresenraya"]
 custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 
-[node name="7" type="Button" parent="GridContainer"]
+[node name="7" type="Button" parent="tresenraya"]
 custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 
-[node name="8" type="Button" parent="GridContainer"]
+[node name="8" type="Button" parent="tresenraya"]
 custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
+
+[node name="Conecta4" type="GridContainer" parent="."]
+visible = false
+offset_left = 323.99997
+offset_top = 103.99999
+offset_right = 427.99997
+offset_bottom = 208.0
+scale = Vector2(5, 5)
+columns = 7
+
+[node name="0" type="Button" parent="Conecta4"]
+custom_minimum_size = Vector2(12, 12)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
 
 [node name="StatusLabel" type="Label" parent="."]
 offset_left = 6.0
@@ -137,6 +152,18 @@ position = Vector2(773, 699)
 [node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="."]
 _spawnable_scenes = PackedStringArray("uid://3rsc6mcmas4n")
 spawn_path = NodePath("../PieceContainer")
+
+[node name="OptionButton" type="OptionButton" parent="."]
+offset_left = 1038.0
+offset_top = 4.0
+offset_right = 1147.0
+offset_bottom = 35.0
+selected = 0
+item_count = 2
+popup/item_0/text = "3 en raya"
+popup/item_0/id = 1
+popup/item_1/text = "Conecta 4"
+popup/item_1/id = 2
 
 [connection signal="pressed" from="HostButton" to="." method="_on_HostButton_pressed"]
 [connection signal="pressed" from="JoinButton" to="." method="_on_JoinButton_pressed"]

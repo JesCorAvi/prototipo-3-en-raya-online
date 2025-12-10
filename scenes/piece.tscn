@@ -55,6 +55,7 @@ offset_right = 108.0
 offset_bottom = 112.0
 theme_override_fonts/font = SubResource("FontVariation_gebih")
 theme_override_font_sizes/font_size = 72
+text = "2"
 horizontal_alignment = 1
 vertical_alignment = 1
 
