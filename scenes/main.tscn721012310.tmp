@@ -1,0 +1,143 @@
+[gd_scene load_steps=3 format=3 uid="uid://b5xg56jie47su"]
+
+[ext_resource type="Script" uid="uid://dhptlx8b4gbof" path="res://scripts/Main.gd" id="1_o5qli"]
+[ext_resource type="PackedScene" uid="uid://3rsc6mcmas4n" path="res://scenes/piece.tscn" id="2_0wfyh"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_o5qli")
+
+[node name="GridContainer" type="GridContainer" parent="."]
+offset_left = 323.99997
+offset_top = 103.99999
+offset_right = 427.99997
+offset_bottom = 208.0
+scale = Vector2(5, 5)
+columns = 3
+
+[node name="0" type="Button" parent="GridContainer"]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+
+[node name="1" type="Button" parent="GridContainer"]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+
+[node name="2" type="Button" parent="GridContainer"]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+
+[node name="3" type="Button" parent="GridContainer"]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+
+[node name="4" type="Button" parent="GridContainer"]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+
+[node name="5" type="Button" parent="GridContainer"]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+
+[node name="6" type="Button" parent="GridContainer"]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+
+[node name="7" type="Button" parent="GridContainer"]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+
+[node name="8" type="Button" parent="GridContainer"]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+
+[node name="StatusLabel" type="Label" parent="."]
+offset_left = 6.0
+offset_top = 3.0
+offset_right = 483.0
+offset_bottom = 35.0
+
+[node name="HostButton" type="Button" parent="."]
+offset_left = 43.0
+offset_top = 100.0
+offset_right = 137.0
+offset_bottom = 131.0
+text = "Crear Juego"
+
+[node name="JoinButton" type="Button" parent="."]
+offset_left = 44.0
+offset_top = 257.0
+offset_right = 118.0
+offset_bottom = 288.0
+text = "Unirme"
+
+[node name="IPAddress" type="LineEdit" parent="."]
+offset_left = 151.0
+offset_top = 260.0
+offset_right = 325.0
+offset_bottom = 291.0
+placeholder_text = "ej. 127.0.0.1"
+
+[node name="ResultLabel" type="Label" parent="."]
+z_index = 7
+offset_left = 345.0
+offset_top = 298.0
+offset_right = 834.0
+offset_bottom = 405.0
+theme_override_font_sizes/font_size = 64
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ResetTimer" type="Timer" parent="."]
+wait_time = 3.0
+
+[node name="PieceContainer" type="Node" parent="."]
+
+[node name="Piece2-O" parent="PieceContainer" instance=ExtResource("2_0wfyh")]
+position = Vector2(127, 116)
+player_symbol = 2
+
+[node name="Piece3-O" parent="PieceContainer" instance=ExtResource("2_0wfyh")]
+position = Vector2(130, 300)
+player_symbol = 2
+
+[node name="Piece1-O" parent="PieceContainer" instance=ExtResource("2_0wfyh")]
+position = Vector2(132, 486)
+player_symbol = 2
+
+[node name="Piece3-X" parent="PieceContainer" instance=ExtResource("2_0wfyh")]
+position = Vector2(917, 130)
+
+[node name="Piece2-X" parent="PieceContainer" instance=ExtResource("2_0wfyh")]
+position = Vector2(931, 489)
+
+[node name="Piece1-X" parent="PieceContainer" instance=ExtResource("2_0wfyh")]
+position = Vector2(921, 315)
+
+[node name="AñadirX" type="Button" parent="PieceContainer"]
+offset_left = 955.0
+offset_top = 685.0
+offset_right = 1025.0
+offset_bottom = 716.0
+text = "generar Pieza X"
+
+[node name="AñadirO" type="Button" parent="PieceContainer"]
+offset_left = 154.0
+offset_top = 691.0
+offset_right = 223.0
+offset_bottom = 722.0
+text = "Generar Pieza O"
+
+[node name="SpawnO" type="Marker2D" parent="PieceContainer"]
+position = Vector2(403, 712)
+
+[node name="SpawnX" type="Marker2D" parent="PieceContainer"]
+position = Vector2(773, 699)
+
+[node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="."]
+_spawnable_scenes = PackedStringArray("uid://3rsc6mcmas4n")
+spawn_path = NodePath("../PieceContainer")
+
+[connection signal="pressed" from="HostButton" to="." method="_on_HostButton_pressed"]
+[connection signal="pressed" from="JoinButton" to="." method="_on_JoinButton_pressed"]
+[connection signal="timeout" from="ResetTimer" to="." method="_on_ResetTimer_timeout"]

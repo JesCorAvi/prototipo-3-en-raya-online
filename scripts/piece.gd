@@ -1,51 +1,56 @@
 extends RigidBody2D
 
-@export var player_symbol: int = 1
+# Setter: Actualiza visuales inmediatamente al recibir datos
+@export var player_symbol: int = 1:
+	set(value):
+		player_symbol = value
+		if is_inside_tree():
+			update_symbol()
+
+@export var original_position: Vector2 # Asegúrate de añadir esto al Synchronizer también
+
 @export var is_dragging: bool = false
 
 var current_cell_index: int = -1 
-var original_position: Vector2
 var is_returning: bool = false
 var offset: Vector2 = Vector2.ZERO
 var drag_target_position: Vector2 = Vector2.ZERO
 var last_global_pos: Vector2
 var return_target_pos: Vector2
-var highlight_material: ShaderMaterial
 
 const PIECE_SIZE = 128.0
 
-@onready var main_script = get_node("/root/Main")
+var main_script = null
+
 @onready var panel: Panel = $Panel
 @onready var label: Label = $Label
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
 
 func _ready():
-	original_position = global_position
+	if not main_script:
+		main_script = get_node_or_null("/root/Main")
+	
+	# Si original_position no se sincronizó (es 0,0), usamos la posición actual
+	if original_position == Vector2.ZERO:
+		original_position = global_position
+		
 	return_target_pos = original_position
 	set_as_top_level(true)
+	
 	update_symbol()
+	
+	# SOLUCIÓN MAESTRA:
+	# Usamos call_deferred para esperar a que termine la sincronización del Spawner.
+	# Así recibimos la posición correcta (Spawn) ANTES de reclamar la autoridad.
+	call_deferred("update_authority")
+	
 	lock_rotation = true
 	freeze = false
 	z_index = 0
 
-	var shader = load("res://shaders/outline_highlight.gdshader")
-	if shader:
-		highlight_material = ShaderMaterial.new()
-		highlight_material.shader = shader
-		highlight_material.set_shader_parameter("color", Color(1, 1, 0, 1))
-		highlight_material.set_shader_parameter("width", 5.0)
-		highlight_material.set_shader_parameter("pattern", 1)
-		highlight_material.set_shader_parameter("add_margins", true)
-
-	panel.mouse_entered.connect(_on_panel_hover.bind(true))
-	panel.mouse_exited.connect(_on_panel_hover.bind(false))
-
-	await get_tree().process_frame
-	last_global_pos = global_position
-
-
 func _physics_process(_delta):
-	collision_shape.disabled = is_dragging
+	if collision_shape:
+		collision_shape.disabled = is_dragging
 	
 	if is_dragging:
 		var direction = drag_target_position - global_position
@@ -55,11 +60,16 @@ func _physics_process(_delta):
 
 	last_global_pos = global_position
 
-func _on_panel_hover(is_hovering: bool):
-	if is_hovering and not is_dragging:
-		panel.material = highlight_material
-	else:
-		panel.material = null
+func update_authority():
+	if not main_script: return
+	
+	var target_id = 1 # Por defecto Servidor
+	
+	# Si es pieza O (jugador 2), la autoridad es el cliente O
+	if player_symbol == 2: 
+		target_id = main_script.player_o_net_id
+	
+	set_multiplayer_authority(target_id)
 
 func update_symbol():
 	var symbol := ""
@@ -67,31 +77,32 @@ func update_symbol():
 	var panel_color := Color.WHITE
 
 	match player_symbol:
-		1:
+		1: # PLAYER_X
 			symbol = "X"
 			color = Color.RED
 			panel_color = Color(1, 0.8, 0.8)
-		2:
+		2: # PLAYER_O
 			symbol = "O"
 			color = Color.BLUE
 			panel_color = Color(0.8, 0.8, 1)
 		_:
-			symbol = ""
-			panel_color = Color.WHITE
+			symbol = "?"
+			panel_color = Color.GRAY
 
-	label.text = symbol
-	label.add_theme_color_override("font_color", color)
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	if label:
+		label.text = symbol
+		label.add_theme_color_override("font_color", color)
 	
-	var stylebox := StyleBoxFlat.new()
-	stylebox.bg_color = panel_color
-	stylebox.set_corner_radius_all(12)
-	panel.add_theme_stylebox_override("panel", stylebox)
+	if panel:
+		var stylebox := StyleBoxFlat.new()
+		stylebox.bg_color = panel_color
+		stylebox.set_corner_radius_all(12)
+		panel.add_theme_stylebox_override("panel", stylebox)
 
 func _input(event):
 	if not multiplayer.has_multiplayer_peer(): return
 	var my_id = multiplayer.get_unique_id()
+	
 	if get_multiplayer_authority() != my_id: return
 		
 	if event is InputEventMouseButton:
@@ -103,7 +114,7 @@ func _input(event):
 						return
 					
 					is_dragging = true
-					panel.material = null
+					if panel: panel.material = null
 					is_returning = false 
 					z_index = 99
 					
@@ -132,8 +143,12 @@ func _input(event):
 							var target_pos = cell_node.get_global_rect().get_center()
 							main_script.attempt_place_piece(new_cell_index, get_path(), target_pos, current_cell_index)
 					else:
-
-						var free_drop_pos = global_position + Vector2(64, 64)
+						# Soltar fuera (volver al spawn)
+						var free_drop_pos = Vector2.ZERO
+						if original_position != Vector2.ZERO:
+							free_drop_pos = original_position
+						else:
+							free_drop_pos = global_position # Fallback
 						
 						main_script.attempt_place_piece(-1, get_path(), free_drop_pos, current_cell_index)
 						
@@ -159,7 +174,8 @@ func check_drop_target(drop_position: Vector2) -> int:
 func return_to_last_valid_pos():
 	is_returning = true
 	freeze = true 
-	collision_shape.set_deferred("disabled", true)
+	if collision_shape:
+		collision_shape.set_deferred("disabled", true)
 	
 	if current_cell_index != -1:
 		var cell = main_script.cell_nodes[current_cell_index]
@@ -174,6 +190,7 @@ func return_to_last_valid_pos():
 	
 	tween.tween_callback(func():
 		is_returning = false
-		collision_shape.set_deferred("disabled", false)
+		if collision_shape:
+			collision_shape.set_deferred("disabled", false)
 		freeze = false
 	)

@@ -7,7 +7,7 @@ const EMPTY = 0
 const DEFAULT_PORT = 10567
 const MAX_PLAYERS = 2
 const MAX_PLAYER_PIECES = 3 
-const CURSOR_SCENE_PATH = "res://scenes/Cursor.tscn"
+const CURSOR_SCENE_PATH = "res://scenes/cursor.tscn"
 const PIECE_SCENE_PATH = "res://scenes/piece.tscn"
 
 var board: Array[int] = []
@@ -20,7 +20,6 @@ var remote_cursors: Dictionary = {}
 var cursor_scene: PackedScene
 var piece_scene: PackedScene
 var cell_nodes: Array = []
-var highlight_material: ShaderMaterial
 
 @onready var grid_container: GridContainer = $GridContainer
 @onready var status_label: Label = $StatusLabel
@@ -42,15 +41,6 @@ func _ready():
 	if ResourceLoader.exists(PIECE_SCENE_PATH):
 		piece_scene = load(PIECE_SCENE_PATH)
 	
-	var shader = load("res://shaders/outline_highlight.gdshader")
-	if shader:
-		highlight_material = ShaderMaterial.new()
-		highlight_material.shader = shader
-		highlight_material.set_shader_parameter("color", Color(1, 1, 0, 1))
-		highlight_material.set_shader_parameter("width", 5.0)
-		highlight_material.set_shader_parameter("pattern", 1)
-		highlight_material.set_shader_parameter("add_margins", true)
-
 	multiplayer.peer_connected.connect(_player_connected)
 	multiplayer.peer_disconnected.connect(_player_disconnected)
 	multiplayer.connection_failed.connect(_connection_failed)
@@ -61,8 +51,14 @@ func _ready():
 	for i in range(BOARD_SIZE):
 		var btn = grid_container.get_child(i)
 		cell_nodes.append(btn)
-		btn.mouse_entered.connect(_on_cell_hover.bind(btn, true))
-		btn.mouse_exited.connect(_on_cell_hover.bind(btn, false))
+	
+	# AL INICIO: Marcamos las piezas que vienen de fábrica y guardamos su posición inicial
+	for child in piece_container.get_children():
+		if child is RigidBody2D:
+			child.add_to_group("initial_pieces")
+			# Guardamos manualmente la posición inicial (el banco)
+			if "original_position" in child:
+				child.original_position = child.global_position
 
 	grid_container.hide()
 	result_label.hide()
@@ -72,12 +68,6 @@ func _process(_delta):
 	if multiplayer.has_multiplayer_peer() and is_game_active:
 		var mouse_pos = get_viewport().get_mouse_position()
 		rpc("send_cursor_position", mouse_pos)
-
-func _on_cell_hover(btn: Button, is_hovering: bool):
-	if is_hovering and is_game_active:
-		btn.material = highlight_material
-	else:
-		btn.material = null
 
 func _on_add_piece_pressed(symbol: int):
 	if not is_game_active: return
@@ -151,7 +141,8 @@ func _player_disconnected(id: int):
 	is_game_active = false
 	player_o_net_id = PLAYER_O
 	if remote_cursors.has(id):
-		remote_cursors[id].queue_free()
+		if is_instance_valid(remote_cursors[id]):
+			remote_cursors[id].queue_free()
 		remote_cursors.erase(id)
 	reset_game(false)
 
@@ -167,6 +158,9 @@ func sync_game_state(new_board: Array[int], new_pieces_X: int, new_pieces_O: int
 	disable_network_buttons()
 	grid_container.show()
 	set_pieces_visible(true)
+	
+	reset_all_pieces_visuals()
+	
 	is_game_active = true
 	apply_piece_authorities_local()
 
@@ -183,7 +177,8 @@ func send_cursor_position(position: Vector2):
 		var symbol_name = "X" if sender_id == 1 else "O"
 		cursor_node.setup_cursor(symbol_name)
 		
-	remote_cursors[sender_id].global_position = position
+	if is_instance_valid(remote_cursors[sender_id]):
+		remote_cursors[sender_id].global_position = position
 
 func apply_piece_authorities_local():
 	if not multiplayer.has_multiplayer_peer(): return
@@ -219,11 +214,15 @@ func place_piece(new_index: int, symbol: int, piece_path: String, target_pos: Ve
 	
 	var piece_node: RigidBody2D = get_node(piece_path)
 	if is_instance_valid(piece_node):
+		# Centrar en el slot
 		piece_node.global_position = target_pos - Vector2(64, 64)
 		
-		piece_node.original_position = piece_node.global_position
+		# --- CORRECCIÓN: ELIMINADA LA LÍNEA QUE SOBREESCRIBÍA original_position ---
+		# piece_node.original_position = piece_node.global_position  <-- ESTO ERA EL ERROR
 		
 		piece_node.current_cell_index = new_index
+		
+		# Congelar pieza
 		piece_node.freeze = true
 		piece_node.is_dragging = false
 		piece_node.is_returning = false
@@ -240,7 +239,7 @@ func check_win(symbol: int) -> bool:
 	var winning_lines = [
 		[0, 1, 2], [3, 4, 5], [6, 7, 8],
 		[0, 3, 6], [1, 4, 7], [2, 5, 8],
-		[0, 4, 8], [2, 4, 6]           
+		[0, 4, 8], [2, 4, 6] 
 	]
 	for line in winning_lines:
 		if board[line[0]] == symbol and board[line[1]] == symbol and board[line[2]] == symbol:
@@ -272,6 +271,30 @@ func _on_ResetTimer_timeout():
 	else:
 		reset_game(false)
 
+func reset_all_pieces_visuals():
+	for piece in piece_container.get_children():
+		if piece is RigidBody2D:
+			# Tomamos autoridad temporal para moverlas
+			piece.set_multiplayer_authority(1)
+			
+			if piece.is_in_group("initial_pieces"):
+				piece.current_cell_index = -1
+				piece.is_returning = false
+				
+				# Freeze true es necesario para teletransportar RigidBody sin física
+				piece.freeze = true 
+				piece.linear_velocity = Vector2.ZERO
+				piece.angular_velocity = 0
+				piece.rotation = 0
+				
+				# Teletransporte al origen (que ahora ya no está corrupto)
+				piece.global_position = piece.original_position
+				piece.z_index = 0
+				
+				# OPCIONAL: Si quieres que vuelvan a estar 'flotando' y no estáticas:
+				# piece.set_deferred("freeze", false) 
+				# Pero tu código de input ya maneja el freeze = false al hacer clic, así que está bien dejarlas frozen.
+
 func reset_game(keep_peer: bool = false):
 	board.resize(BOARD_SIZE)
 	board.fill(EMPTY)
@@ -285,21 +308,23 @@ func reset_game(keep_peer: bool = false):
 	result_label.hide()
 	reset_timer.stop()
 	
-	for piece in piece_container.get_children():
-		if piece is RigidBody2D:
-			piece.current_cell_index = -1
-			piece.freeze = false
-			piece.is_returning = false
-			piece.linear_velocity = Vector2.ZERO
-			piece.global_position = piece.original_position 
-			piece.z_index = 0
+	if multiplayer.is_server() or not multiplayer.has_multiplayer_peer():
+		for child in piece_container.get_children():
+			if child is RigidBody2D and not child.is_in_group("initial_pieces"):
+				child.queue_free()
+	
+	reset_all_pieces_visuals()
 	
 	if not keep_peer and multiplayer.has_multiplayer_peer():
 		multiplayer.multiplayer_peer = null
 	
 	if not keep_peer or not multiplayer.has_multiplayer_peer():
 		player_o_net_id = PLAYER_O
+		for peer_id in remote_cursors:
+			if is_instance_valid(remote_cursors[peer_id]):
+				remote_cursors[peer_id].queue_free()
 		remote_cursors.clear()
+		
 		enable_network_buttons()
 		grid_container.hide()
 		set_pieces_visible(false)
