@@ -372,12 +372,10 @@ func _on_ResetTimer_timeout():
 		reset_game(false)
 
 func reset_game(keep_peer: bool = false):
-	# Redimensionar tablero según juego actual
 	var total_cells = current_cols * current_rows
 	board.resize(total_cells)
 	board.fill(EMPTY)
 	
-	# Reiniciar contadores según juego
 	var max_p = MAX_PIECES_TTT if current_game_type == GameType.TIC_TAC_TOE else MAX_PIECES_C4
 	pieces_left_X = max_p
 	pieces_left_O = max_p
@@ -385,12 +383,12 @@ func reset_game(keep_peer: bool = false):
 	is_game_active = false
 	
 	update_board_ui()
+	
 	update_piece_counts_ui()
 	
 	result_label.hide()
 	reset_timer.stop()
 	
-	# Limpiar piezas extra (spawned)
 	if multiplayer.is_server() or not multiplayer.has_multiplayer_peer():
 		for child in piece_container.get_children():
 			if child is RigidBody2D and not child.is_in_group("initial_pieces"):
@@ -413,11 +411,16 @@ func reset_game(keep_peer: bool = false):
 		grid_c4.hide()
 		set_pieces_visible(false)
 		status_label.text = "Selecciona juego y crea partida."
+		
 	elif multiplayer.is_server() and keep_peer:
-		status_label.text = "Juego reiniciado. Esperando..."
-		# Habilitar el botón de opción para el host durante el reinicio suave
-		option_button.disabled = false
+		
+		if multiplayer.get_peers().size() == 0:
+			status_label.text = "Esperando jugador..."
+		else:
+			pass
 
+		option_button.disabled = false
+		
 func reset_all_pieces_visuals():
 	for piece in piece_container.get_children():
 		if piece is RigidBody2D:
@@ -569,8 +572,24 @@ func update_board_ui():
 			cell.text = "" 
 
 func update_piece_counts_ui():
-	var symbol_name = "X" if player_symbol == PLAYER_X else "O"
-	status_label.text = "Eres el jugador: " + symbol_name
+	var p1_player = "rojo"
+	var p2_player = "azul"
+	var p1_piece = "roja"
+	var p2_piece = "azul"
+	
+	if current_game_type != GameType.CONNECT_4:
+		p1_player = "X"
+		p2_player = "O"
+		p1_piece = "X"
+		p2_piece = "O"
+	
+	var my_text = p1_player if player_symbol == PLAYER_X else p2_player
+	status_label.text = "Eres el jugador: " + my_text.capitalize()
+	
+	if btn_add_x:
+		btn_add_x.text = "Generar pieza " + p1_piece
+	if btn_add_o:
+		btn_add_o.text = "Generar pieza " + p2_piece
 
 func get_my_pieces_left() -> int:
 	return pieces_left_X if player_symbol == PLAYER_X else pieces_left_O
