@@ -141,7 +141,7 @@ func _on_game_mode_selected(index: int):
 	elif multiplayer.is_server():
 		rpc("set_game_mode", selected_id)
 		if was_active:
-			rpc("start_match_from_lobby")
+			rpc("return_to_lobby")
 	else:
 		_sync_option_button_ui()
 
@@ -322,7 +322,6 @@ func _check_line(symbol: int, start_r: int, start_c: int, step_r: int, step_c: i
 	return true
 
 func game_over(winning_symbol: int):
-
 	await get_tree().create_timer(1.5).timeout
 	
 	var result_text = "¡EMPATE!"
@@ -346,7 +345,6 @@ func show_game_result(result_text: String, color: Color):
 	result_label.add_theme_color_override("font_color", color)
 	result_label.show()
 	
-
 	reset_timer.start()
 
 func _on_ResetTimer_timeout():
@@ -356,10 +354,9 @@ func _on_ResetTimer_timeout():
 @rpc("call_local", "reliable")
 func return_to_lobby():
 	reset_game(true, true)
-	
 	grid_ttt.hide()
 	grid_c4.hide()
-	set_pieces_visible(false) 
+	set_pieces_visible(false)
 	
 	if multiplayer.is_server():
 		status_label.text = "Partida finalizada. Configura la siguiente."
@@ -652,6 +649,7 @@ func update_lobby_ui():
 	
 	var my_id = multiplayer.get_unique_id()
 	var my_team = -1
+	var my_current_color = Color.TRANSPARENT 
 	
 	for pid in lobby_players:
 		var data = lobby_players[pid]
@@ -661,7 +659,9 @@ func update_lobby_ui():
 		
 		if pid == my_id:
 			my_team = team
-			player_symbol = team 
+			player_symbol = team
+			if data.has("color"):
+				my_current_color = data.color
 		
 		var target_btn = null
 		if team == 1 and idx < slots_team1.size():
@@ -672,9 +672,27 @@ func update_lobby_ui():
 		if target_btn:
 			target_btn.text = p_name
 			target_btn.disabled = true
+	
+	var update_visuals = func(panel_array, team_id):
+		for p in panel_array:
+			p.modulate.a = 1.0 if my_team == team_id else 0.3
 			
-	for p in colors_team1: p.modulate.a = 1.0 if my_team == 1 else 0.3
-	for p in colors_team2: p.modulate.a = 1.0 if my_team == 2 else 0.3
+			var sb = p.get_theme_stylebox("panel")
+			if sb is StyleBoxFlat:
+				sb.border_width_left = 0
+				sb.border_width_top = 0
+				sb.border_width_right = 0
+				sb.border_width_bottom = 0
+				
+				if my_team == team_id and sb.bg_color.is_equal_approx(my_current_color):
+					sb.border_width_left = 5
+					sb.border_width_top = 5
+					sb.border_width_right = 5
+					sb.border_width_bottom = 5
+					sb.border_color = Color.WHITE
+
+	update_visuals.call(colors_team1, 1)
+	update_visuals.call(colors_team2, 2)
 
 func _on_start_game_pressed():
 	rpc("sync_game_state", board, pieces_left_X, pieces_left_O, player_o_net_id, current_game_type)

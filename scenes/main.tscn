@@ -256,36 +256,58 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 36
 text = "Slot 2"
 
+[node name="LabelT1" type="Label" parent="Lobby"]
+layout_mode = 0
+offset_left = 11.0
+offset_top = 252.0
+offset_right = 203.0
+offset_bottom = 286.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 24
+text = "Color de jugador"
+horizontal_alignment = 1
+
+[node name="LabelT2" type="Label" parent="Lobby"]
+layout_mode = 0
+offset_left = 228.0
+offset_top = 254.0
+offset_right = 420.0
+offset_bottom = 288.0
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_font_sizes/font_size = 24
+text = "Color de jugador"
+horizontal_alignment = 1
+
 [node name="ColorT11" type="Panel" parent="Lobby"]
 layout_mode = 0
 offset_left = 52.0
-offset_top = 276.0
+offset_top = 294.0
 offset_right = 92.0
-offset_bottom = 316.0
+offset_bottom = 334.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_0wfyh")
 
 [node name="Color T12" type="Panel" parent="Lobby"]
 layout_mode = 0
 offset_left = 142.0
-offset_top = 275.0
+offset_top = 293.0
 offset_right = 182.0
-offset_bottom = 315.0
+offset_bottom = 333.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_sugp2")
 
 [node name="ColorT21" type="Panel" parent="Lobby"]
 layout_mode = 0
 offset_left = 248.0
-offset_top = 276.0
+offset_top = 294.0
 offset_right = 288.0
-offset_bottom = 316.0
+offset_bottom = 334.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_jyhfs")
 
 [node name="ColorT22" type="Panel" parent="Lobby"]
 layout_mode = 0
 offset_left = 341.0
-offset_top = 275.0
+offset_top = 293.0
 offset_right = 381.0
-offset_bottom = 315.0
+offset_bottom = 333.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_tbgi4")
 
 [node name="Separador" type="ColorRect" parent="Lobby"]
