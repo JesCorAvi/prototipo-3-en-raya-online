@@ -39,7 +39,7 @@ func _ready():
 	apply_visual_size()
 	update_symbol()
 	
-	call_deferred("update_authority")
+	set_multiplayer_authority(1)
 	
 	lock_rotation = true
 	freeze = false
@@ -78,12 +78,21 @@ func _physics_process(_delta):
 	else:
 		linear_velocity = Vector2.ZERO
 
+@rpc("any_peer", "call_local")
+func request_drag_authority():
+	var sender_id = multiplayer.get_remote_sender_id()
+	if not multiplayer.is_server(): return
+	
+	if main_script.lobby_players.has(sender_id):
+		if main_script.lobby_players[sender_id].team == player_symbol:
+			rpc("set_new_authority", sender_id)
+
+@rpc("authority", "call_local")
+func set_new_authority(new_auth_id: int):
+	set_multiplayer_authority(new_auth_id)
+
 func update_authority():
-	if not main_script: return
-	var target_id = 1 
-	if player_symbol == 2: 
-		target_id = main_script.player_o_net_id
-	set_multiplayer_authority(target_id)
+	pass
 
 func update_symbol():
 	var symbol := ""
@@ -93,12 +102,12 @@ func update_symbol():
 	match player_symbol:
 		1: 
 			symbol = "X"
-			color = Color.RED
-			panel_color = Color(1, 0.8, 0.8)
-		2: 
-			symbol = "O"
 			color = Color.BLUE
 			panel_color = Color(0.8, 0.8, 1)
+		2: 
+			symbol = "O"
+			color = Color.RED
+			panel_color = Color(1, 0.8, 0.8)
 		_:
 			symbol = "?"
 			panel_color = Color.GRAY
@@ -117,15 +126,21 @@ func _input(event):
 	if not multiplayer.has_multiplayer_peer(): return
 	var my_id = multiplayer.get_unique_id()
 	
-	if get_multiplayer_authority() != my_id: return
+	var my_team = 0
+	if main_script.lobby_players.has(my_id):
+		my_team = main_script.lobby_players[my_id].team
+	
+	if my_team != player_symbol: return 
 		
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			if event.pressed:
 				if panel.get_global_rect().has_point(event.global_position):
-					if main_script.player_symbol != player_symbol:
-						main_script.status_label.text = "Solo puedes mover tus propias piezas."
-						return
+					
+
+					if get_multiplayer_authority() != my_id:
+						set_multiplayer_authority(my_id) 
+						rpc_id(1, "request_drag_authority")
 					
 					is_dragging = true
 					is_returning = false 
@@ -145,7 +160,12 @@ func _input(event):
 					var new_cell_index = check_drop_target(drop_pos)
 					
 					if new_cell_index != -1:
-						var is_occupied = main_script.board[new_cell_index] != main_script.EMPTY
+						var is_occupied = false
+						if not main_script.board.is_empty() and new_cell_index < main_script.board.size():
+							is_occupied = main_script.board[new_cell_index] != main_script.EMPTY
+						else:
+							is_occupied = false 
+						
 						var is_same_cell = (new_cell_index == current_cell_index)
 						
 						if is_occupied and not is_same_cell:
@@ -184,7 +204,7 @@ func return_to_last_valid_pos():
 	if collision_shape:
 		collision_shape.set_deferred("disabled", true)
 	
-	if current_cell_index != -1:
+	if current_cell_index != -1 and current_cell_index < main_script.cell_nodes.size():
 		var cell = main_script.cell_nodes[current_cell_index]
 		var center = cell.get_global_rect().get_center()
 		return_target_pos = center 

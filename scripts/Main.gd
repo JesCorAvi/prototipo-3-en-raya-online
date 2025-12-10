@@ -22,7 +22,7 @@ const PLAYER_X = 1
 const PLAYER_O = 2
 const EMPTY = 0
 const DEFAULT_PORT = 10567
-const MAX_PLAYERS = 2
+const MAX_PLAYERS = 4
 const MAX_PIECES_TTT = 5
 const MAX_PIECES_C4 = 21 
 
@@ -38,9 +38,8 @@ var is_game_active: bool = false
 var remote_cursors: Dictionary = {}
 var cursor_scene: PackedScene
 var piece_scene: PackedScene
-var cell_nodes: Array = [] # Referencia dinámica a los botones de la cuadrícula activa
+var cell_nodes: Array = [] 
 
-# --- NODOS UI Y REFERENCIAS ---
 @onready var grid_ttt: GridContainer = $tresenraya
 @onready var grid_c4: GridContainer = $Conecta4
 @onready var option_button: OptionButton = $OptionButton
@@ -57,38 +56,41 @@ var cell_nodes: Array = [] # Referencia dinámica a los botones de la cuadrícul
 @onready var spawn_x_pos = $PieceContainer/SpawnX
 @onready var spawn_o_pos = $PieceContainer/SpawnO
 
+@onready var lobby_node: Control = $Lobby
+@onready var start_game_button: Button = $Lobby/Button
+@onready var slots_team1 = [$"Lobby/GridContainer/Slot1T1", $"Lobby/GridContainer/Slot2T1"]
+@onready var slots_team2 = [$"Lobby/GridContainer/Slot1T2", $"Lobby/GridContainer/Slot2T2"]
+@onready var colors_team1 = [$Lobby/ColorT11, $"Lobby/Color T12"]
+@onready var colors_team2 = [$Lobby/ColorT21, $Lobby/ColorT22]
+
+var lobby_players: Dictionary = {}
+var my_selected_color: Color = Color.WHITE
+
 func _ready():
 	if ResourceLoader.exists(CURSOR_SCENE_PATH):
 		cursor_scene = load(CURSOR_SCENE_PATH)
 	if ResourceLoader.exists(PIECE_SCENE_PATH):
 		piece_scene = load(PIECE_SCENE_PATH)
 	
-	# Conexiones de red
 	multiplayer.peer_connected.connect(_player_connected)
 	multiplayer.peer_disconnected.connect(_player_disconnected)
 	multiplayer.connection_failed.connect(_connection_failed)
 	
-	# Botones de generar piezas
 	btn_add_x.pressed.connect(_on_add_piece_pressed.bind(PLAYER_X))
 	btn_add_o.pressed.connect(_on_add_piece_pressed.bind(PLAYER_O))
 	
-	# Configurar selector de modo de juego
 	option_button.item_selected.connect(_on_game_mode_selected)
 	
-	# Generar cuadrícula de Conecta 4
 	_generate_connect4_grid()
 	
-	# Inicializar grupos de piezas originales
 	for child in piece_container.get_children():
 		if child is RigidBody2D:
 			child.add_to_group("initial_pieces")
 			if "original_position" in child:
 				child.original_position = child.global_position
 
-	# OCULTAR PIEZAS EN EL MENÚ INICIAL
 	set_pieces_visible(false)
 
-	# Iniciar variables internas del modo por defecto (SIN tocar visuales aún)
 	current_game_type = GameType.TIC_TAC_TOE
 	current_cols = TTT_COLS
 	current_rows = TTT_ROWS
@@ -96,28 +98,36 @@ func _ready():
 	current_piece_size = PIECE_SIZE_TTT
 	_update_cell_nodes_reference(grid_ttt)
 	
-	# --- CORRECCIÓN FINAL: Forzar ocultación explícita al final del ready ---
 	grid_ttt.hide()
 	grid_c4.hide()
 	result_label.hide()
-	# ----------------------------------------------------------------------
-func _process(_delta):
-	if multiplayer.has_multiplayer_peer() and is_game_active:
-		var mouse_pos = get_viewport().get_mouse_position()
-		rpc("send_cursor_position", mouse_pos)
+	lobby_node.hide()
+	
+	start_game_button.pressed.connect(_on_start_game_pressed)
+	
+	for i in range(slots_team1.size()):
+		slots_team1[i].pressed.connect(_on_slot_pressed.bind(1, i))
+	for i in range(slots_team2.size()):
+		slots_team2[i].pressed.connect(_on_slot_pressed.bind(2, i))
+		
+	for i in range(colors_team1.size()):
+		colors_team1[i].gui_input.connect(_on_color_input.bind(colors_team1[i], 1))
+	for i in range(colors_team2.size()):
+		colors_team2[i].gui_input.connect(_on_color_input.bind(colors_team2[i], 2))
 
-# --- LÓGICA DE SELECCIÓN DE JUEGO ---
+func _process(_delta):
+	if multiplayer.has_multiplayer_peer():
+		if multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+			var mouse_pos = get_viewport().get_mouse_position()
+			rpc("send_cursor_info", mouse_pos, my_selected_color)
 
 func _generate_connect4_grid():
-	# Limpiar hijos existentes
 	for child in grid_c4.get_children():
 		child.queue_free()
 	
-	# Generar 42 slots (botones)
 	var total_slots = C4_COLS * C4_ROWS
 	for i in range(total_slots):
 		var btn = Button.new()
-		# Ajuste visual para el grid escalado
 		btn.custom_minimum_size = Vector2(12, 12) 
 		btn.name = str(i)
 		grid_c4.add_child(btn)
@@ -125,23 +135,15 @@ func _generate_connect4_grid():
 func _on_game_mode_selected(index: int):
 	var selected_id = option_button.get_item_id(index)
 	
-	# CASO 1: Offline (Menú principal sin red)
 	if not multiplayer.has_multiplayer_peer():
 		set_game_mode(selected_id)
-		
-	# CASO 2: Host (Servidor activo)
 	elif multiplayer.is_server():
-		# 1. Cambiamos la configuración del modo
 		rpc("set_game_mode", selected_id)
-		
-		# 2. CORRECCIÓN: Solo sincronizamos arranque (active=true) si tenemos oponente.
-		# Si get_peers().size() > 0 significa que hay clientes conectados.
 		if multiplayer.get_peers().size() > 0:
 			rpc("sync_game_state", board, pieces_left_X, pieces_left_O, player_o_net_id, current_game_type)
-		
-	# CASO 3: Cliente
 	else:
 		_sync_option_button_ui()
+
 @rpc("any_peer", "call_local", "reliable")
 func set_game_mode(mode_id: int):
 	current_game_type = mode_id
@@ -151,12 +153,9 @@ func set_game_mode(mode_id: int):
 		current_rows = TTT_ROWS
 		current_win_len = TTT_WIN_LEN
 		current_piece_size = PIECE_SIZE_TTT
-		
-		# CORRECCIÓN: Solo nos aseguramos de OCULTAR el que no toca.
-		# No forzamos grid_ttt.show() aquí. Si el juego debe verse, 
-		# sync_game_state lo mostrará.
-		grid_c4.hide()
-			
+		if is_game_active:
+			grid_c4.hide()
+			grid_ttt.show()
 		_update_cell_nodes_reference(grid_ttt)
 		
 	elif current_game_type == GameType.CONNECT_4:
@@ -164,20 +163,16 @@ func set_game_mode(mode_id: int):
 		current_rows = C4_ROWS
 		current_win_len = C4_WIN_LEN
 		current_piece_size = PIECE_SIZE_C4
-		
-		# CORRECCIÓN: Solo ocultar el contrario.
-		grid_ttt.hide()
-			
+		if is_game_active:
+			grid_ttt.hide()
+			grid_c4.show()
 		_update_cell_nodes_reference(grid_c4)
 	
 	_sync_option_button_ui()
 	
-	# Resetear lógica interna si la red está activa
 	if multiplayer.has_multiplayer_peer():
-		reset_game(multiplayer.has_multiplayer_peer())
-	# Resetear lógica interna
-	if multiplayer.has_multiplayer_peer():
-		reset_game(multiplayer.has_multiplayer_peer())
+		reset_game(true)
+
 func _sync_option_button_ui():
 	for i in range(option_button.item_count):
 		if option_button.get_item_id(i) == current_game_type:
@@ -190,8 +185,6 @@ func _update_cell_nodes_reference(active_grid: GridContainer):
 	for child in active_grid.get_children():
 		cell_nodes.append(child)
 
-# --- CREACIÓN DE PIEZAS (SPAWN) ---
-
 func _on_add_piece_pressed(symbol: int):
 	if not is_game_active: return
 	rpc_id(1, "spawn_new_piece", symbol)
@@ -202,8 +195,6 @@ func spawn_new_piece(symbol: int):
 	
 	var new_piece = piece_scene.instantiate()
 	new_piece.player_symbol = symbol
-	
-	# IMPORTANTE: Asignar el tamaño actual al spawnear
 	new_piece.piece_size = current_piece_size
 	new_piece.scale = Vector2(1, 1)
 	
@@ -219,18 +210,20 @@ func spawn_new_piece(symbol: int):
 	new_piece.original_position = spawn_pos
 	
 	piece_container.add_child(new_piece, true)
-	
-	var auth_id = PLAYER_X if symbol == PLAYER_X else player_o_net_id
-	new_piece.set_multiplayer_authority(auth_id)
-
-# --- LÓGICA DE JUEGO Y MOVIMIENTO ---
+	new_piece.set_multiplayer_authority(1)
 
 func attempt_place_piece(new_index: int, piece_path: String, target_pos: Vector2, old_index: int = -1):
 	if not multiplayer.has_multiplayer_peer():
 		status_label.text = "Primero debes unirte a un juego."
 		return
 	
-	# LÓGICA CONECTA 4: GRAVEDAD
+	if board.is_empty():
+		status_label.text = "Error: Tablero no inicializado."
+		return
+		
+	if new_index >= board.size():
+		return
+
 	if current_game_type == GameType.CONNECT_4 and new_index != -1:
 		new_index = _get_lowest_available_in_column(new_index)
 		if new_index == -1:
@@ -239,12 +232,10 @@ func attempt_place_piece(new_index: int, piece_path: String, target_pos: Vector2
 			if p: p.return_to_last_valid_pos()
 			return
 		
-		# Actualizar target_pos visual al nuevo slot
 		if new_index < cell_nodes.size():
 			var target_cell = cell_nodes[new_index]
 			target_pos = target_cell.get_global_rect().get_center()
 
-	# Validación estándar
 	if new_index != -1 and board[new_index] != EMPTY and new_index != old_index:
 		status_label.text = "Casilla ocupada."
 		var p = get_node(piece_path)
@@ -255,21 +246,23 @@ func attempt_place_piece(new_index: int, piece_path: String, target_pos: Vector2
 
 func _get_lowest_available_in_column(index: int) -> int:
 	var col = index % current_cols
-	# Buscar desde abajo hacia arriba
 	for r in range(current_rows - 1, -1, -1):
 		var check_index = r * current_cols + col
-		if board[check_index] == EMPTY:
+		if check_index < board.size() and board[check_index] == EMPTY:
 			return check_index
-	return -1 # Columna llena
+	return -1 
 
 @rpc("any_peer", "call_local")
 func place_piece(new_index: int, symbol: int, piece_path: String, target_pos: Vector2, old_index: int):
-	# Validar de nuevo (por seguridad en servidor)
-	if new_index != -1 and board[new_index] != EMPTY and new_index != old_index:
-		return
+	if board.is_empty(): return
+	
+	if new_index != -1:
+		if new_index < 0 or new_index >= board.size(): return
+		if board[new_index] != EMPTY and new_index != old_index: return
 		
 	if old_index != -1:
-		board[old_index] = EMPTY
+		if old_index >= 0 and old_index < board.size():
+			board[old_index] = EMPTY
 	
 	if new_index != -1:
 		board[new_index] = symbol
@@ -283,7 +276,6 @@ func place_piece(new_index: int, symbol: int, piece_path: String, target_pos: Ve
 		piece_node.linear_velocity = Vector2.ZERO
 		piece_node.z_index = 0
 		
-		# ANIMACIÓN DE CAÍDA
 		var final_pos = target_pos
 		
 		if current_game_type == GameType.CONNECT_4 and new_index != -1:
@@ -303,21 +295,16 @@ func place_piece(new_index: int, symbol: int, piece_path: String, target_pos: Ve
 	if new_index != -1 and check_win(symbol):
 		game_over(symbol)
 
-# --- VERIFICACIÓN DE VICTORIA (GENÉRICA) ---
 func check_win(symbol: int) -> bool:
-	# Horizontal
 	for r in range(current_rows):
 		for c in range(current_cols - current_win_len + 1):
 			if _check_line(symbol, r, c, 0, 1): return true
-	# Vertical
 	for r in range(current_rows - current_win_len + 1):
 		for c in range(current_cols):
 			if _check_line(symbol, r, c, 1, 0): return true
-	# Diagonal \
 	for r in range(current_rows - current_win_len + 1):
 		for c in range(current_cols - current_win_len + 1):
 			if _check_line(symbol, r, c, 1, 1): return true
-	# Diagonal /
 	for r in range(current_win_len - 1, current_rows):
 		for c in range(current_cols - current_win_len + 1):
 			if _check_line(symbol, r, c, -1, 1): return true
@@ -328,11 +315,10 @@ func _check_line(symbol: int, start_r: int, start_c: int, step_r: int, step_c: i
 		var r = start_r + step_r * i
 		var c = start_c + step_c * i
 		var idx = r * current_cols + c
+		if idx >= board.size(): return false
 		if board[idx] != symbol:
 			return false
 	return true
-
-# --- FINALIZACIÓN Y REINICIO ---
 
 func game_over(winning_symbol: int):
 	var result_text = "¡EMPATE!"
@@ -359,7 +345,6 @@ func show_game_result(result_text: String, color: Color):
 
 func _on_ResetTimer_timeout():
 	if multiplayer.is_server():
-		# Verificar si el host cambió la opción visualmente mientras esperaba
 		var selected_idx = option_button.selected
 		if selected_idx != -1:
 			var mode_from_ui = option_button.get_item_id(selected_idx)
@@ -369,7 +354,7 @@ func _on_ResetTimer_timeout():
 		reset_game(true)
 		rpc("sync_game_state", board, pieces_left_X, pieces_left_O, player_o_net_id, current_game_type)
 	else:
-		reset_game(false)
+		reset_game(true)
 
 func reset_game(keep_peer: bool = false):
 	var total_cells = current_cols * current_rows
@@ -383,9 +368,7 @@ func reset_game(keep_peer: bool = false):
 	is_game_active = false
 	
 	update_board_ui()
-	
 	update_piece_counts_ui()
-	
 	result_label.hide()
 	reset_timer.stop()
 	
@@ -410,21 +393,20 @@ func reset_game(keep_peer: bool = false):
 		grid_ttt.hide()
 		grid_c4.hide()
 		set_pieces_visible(false)
+		lobby_node.hide()
 		status_label.text = "Selecciona juego y crea partida."
 		
 	elif multiplayer.is_server() and keep_peer:
-		
-		if multiplayer.get_peers().size() == 0:
-			status_label.text = "Esperando jugador..."
-		else:
-			pass
+		lobby_node.show()
+		status_label.text = "Juego terminado. En Lobby."
+	elif keep_peer:
+		lobby_node.show()
+		status_label.text = "Juego terminado. En Lobby."
 
-		option_button.disabled = false
-		
 func reset_all_pieces_visuals():
 	for piece in piece_container.get_children():
 		if piece is RigidBody2D:
-			piece.set_multiplayer_authority(1) # Temporal para mover
+			piece.set_multiplayer_authority(1)
 			if piece.is_in_group("initial_pieces"):
 				piece.current_cell_index = -1
 				piece.is_returning = false
@@ -434,17 +416,13 @@ func reset_all_pieces_visuals():
 				piece.global_position = piece.original_position
 				piece.z_index = 0
 				
-				# Restaurar tamaño correcto para las piezas iniciales
 				if "piece_size" in piece:
 					piece.piece_size = current_piece_size
 					if piece.has_method("apply_visual_size"):
 						piece.apply_visual_size()
 						piece.update_symbol()
 
-# --- FUNCIONES DE RED (HOST/JOIN) ---
-
 func _on_HostButton_pressed():
-	# 1. Asegurar que tenemos el modo correcto seleccionado en la UI
 	var selected_idx = option_button.selected
 	if selected_idx != -1:
 		var desired_mode = option_button.get_item_id(selected_idx)
@@ -457,12 +435,14 @@ func _on_HostButton_pressed():
 		return
 		
 	multiplayer.multiplayer_peer = peer
-	player_symbol = PLAYER_X
+	
+	reset_game(true)
+	
+	player_symbol = 0
 	player_o_net_id = PLAYER_O
-	status_label.text = "Host iniciado. Esperando jugador..."
+	status_label.text = "Lobby Abierto."
 	disable_network_buttons()
-	# Forzar modo actual al iniciar servidor
-	set_game_mode(current_game_type)
+	show_lobby(true)
 
 func _on_JoinButton_pressed():
 	var peer = ENetMultiplayerPeer.new()
@@ -472,9 +452,10 @@ func _on_JoinButton_pressed():
 		return
 
 	multiplayer.multiplayer_peer = peer
-	player_symbol = PLAYER_O
-	status_label.text = "Conectando..."
+	player_symbol = 0
+	status_label.text = "Conectando al Lobby..."
 	disable_network_buttons()
+	show_lobby(false)
 
 func _connection_failed():
 	status_label.text = "Error de conexión."
@@ -483,38 +464,27 @@ func _connection_failed():
 
 func _player_connected(id: int):
 	if multiplayer.is_server():
-		if multiplayer.get_peers().size() == 1:
-			update_piece_counts_ui()
-			
-			# Mostrar la grilla correcta
-			if current_game_type == GameType.TIC_TAC_TOE:
-				grid_ttt.show()
-			else:
-				grid_c4.show()
-
-			set_pieces_visible(true)
-			is_game_active = true
-			player_o_net_id = id
-			apply_piece_authorities_local()
-			
-			# Sincronizar estado completo con el cliente
-			rpc("sync_game_state", board, pieces_left_X, pieces_left_O, player_o_net_id, current_game_type)
+		rpc_id(id, "update_lobby_state", lobby_players)
+		if is_game_active:
+			rpc_id(id, "sync_game_state", board, pieces_left_X, pieces_left_O, player_o_net_id, current_game_type)
 
 func _player_disconnected(id: int):
-	status_label.text = "Oponente desconectado."
-	is_game_active = false
-	player_o_net_id = PLAYER_O
+	if lobby_players.has(id):
+		lobby_players.erase(id)
+		if multiplayer.is_server():
+			rpc("update_lobby_state", lobby_players)
+	
+	if is_game_active:
+		status_label.text = "Jugador desconectado."
+	
 	if remote_cursors.has(id):
 		if is_instance_valid(remote_cursors[id]):
 			remote_cursors[id].queue_free()
 		remote_cursors.erase(id)
-	reset_game(false)
 
 @rpc("any_peer", "call_local", "reliable") 
 func sync_game_state(new_board: Array[int], new_pieces_X: int, new_pieces_O: int, new_player_o_net_id: int, game_mode: int): 
-	# Si por error de sincronización el modo no coincide, lo forzamos
-	if current_game_type != game_mode:
-		set_game_mode(game_mode)
+	set_game_mode(game_mode)
 
 	board = new_board
 	pieces_left_X = new_pieces_X
@@ -527,22 +497,18 @@ func sync_game_state(new_board: Array[int], new_pieces_X: int, new_pieces_O: int
 	
 	if current_game_type == GameType.TIC_TAC_TOE:
 		grid_ttt.show()
-		grid_c4.hide() # Asegurar que el otro se oculta
+		grid_c4.hide()
 	else:
-		grid_ttt.hide() # Asegurar que el otro se oculta
+		grid_ttt.hide()
 		grid_c4.show()
 		
-	# Esto vuelve a mostrar los botones de generar piezas
 	set_pieces_visible(true)
 	reset_all_pieces_visuals()
-	
-	# REACTIVACIÓN DEL JUEGO
 	is_game_active = true
-	apply_piece_authorities_local()
-# --- UTILIDADES ---
+	lobby_node.hide()
 
 @rpc("any_peer", "unreliable")
-func send_cursor_position(position: Vector2):
+func send_cursor_info(position: Vector2, color: Color):
 	if not cursor_scene: return
 	var sender_id = multiplayer.get_remote_sender_id()
 	if sender_id == multiplayer.get_unique_id(): return 
@@ -551,51 +517,38 @@ func send_cursor_position(position: Vector2):
 		var cursor_node = cursor_scene.instantiate()
 		add_child(cursor_node)
 		remote_cursors[sender_id] = cursor_node
-		var symbol_name = "X" if sender_id == 1 else "O"
-		cursor_node.setup_cursor(symbol_name)
 		
 	if is_instance_valid(remote_cursors[sender_id]):
 		remote_cursors[sender_id].global_position = position
-
-func apply_piece_authorities_local():
-	if not multiplayer.has_multiplayer_peer(): return
-	for piece in piece_container.get_children():
-		if not piece is RigidBody2D: continue
-		var target_id = PLAYER_X if piece.player_symbol == PLAYER_X else player_o_net_id
-		piece.set_multiplayer_authority(target_id)
+		
+		var p_name = ""
+		if lobby_players.has(sender_id):
+			p_name = lobby_players[sender_id].name
+			
+		remote_cursors[sender_id].set_cursor_info(p_name, color)
 
 func update_board_ui():
-	# Limpiar texto de botones si es necesario
 	for i in range(cell_nodes.size()):
 		var cell = cell_nodes[i]
 		if cell is Button:
 			cell.text = "" 
 
 func update_piece_counts_ui():
-	var p1_player = "rojo"
-	var p2_player = "azul"
-	var p1_piece = "roja"
-	var p2_piece = "azul"
+	var p1_player = "X"
+	var p2_player = "O"
+	var p1_piece = "X"
+	var p2_piece = "O"
 	
-	if current_game_type != GameType.CONNECT_4:
-		p1_player = "X"
-		p2_player = "O"
-		p1_piece = "X"
-		p2_piece = "O"
+	var my_text = "Espectador"
+	if player_symbol == PLAYER_X: my_text = p1_player
+	elif player_symbol == PLAYER_O: my_text = p2_player
 	
-	var my_text = p1_player if player_symbol == PLAYER_X else p2_player
-	status_label.text = "Eres el jugador: " + my_text.capitalize()
+	status_label.text = "Eres: " + my_text
 	
 	if btn_add_x:
 		btn_add_x.text = "Generar pieza " + p1_piece
 	if btn_add_o:
 		btn_add_o.text = "Generar pieza " + p2_piece
-
-func get_my_pieces_left() -> int:
-	return pieces_left_X if player_symbol == PLAYER_X else pieces_left_O
-	
-func get_opponent_pieces_left() -> int:
-	return pieces_left_O if player_symbol == PLAYER_X else pieces_left_X
 
 func set_pieces_visible(is_visible: bool):
 	for child in piece_container.get_children():
@@ -609,7 +562,7 @@ func enable_network_buttons():
 	host_button.disabled = false
 	join_button.disabled = false
 	ip_input.editable = true
-	option_button.disabled = false # Permitir cambiar juego
+	option_button.disabled = false 
 
 func disable_network_buttons():
 	host_button.hide()
@@ -618,8 +571,114 @@ func disable_network_buttons():
 	host_button.disabled = true
 	join_button.disabled = true
 	ip_input.editable = false
-
 	if multiplayer.is_server():
 		option_button.disabled = false
 	else:
 		option_button.disabled = true
+
+func show_lobby(is_host: bool):
+	lobby_node.show()
+	start_game_button.disabled = not is_host
+	start_game_button.visible = is_host
+	update_lobby_ui()
+
+func _on_slot_pressed(team: int, slot_idx: int):
+	rpc_id(1, "request_slot_selection", multiplayer.get_unique_id(), team, slot_idx)
+
+@rpc("any_peer", "call_local")
+func request_slot_selection(requesting_id: int, team: int, slot_idx: int):
+	if not multiplayer.is_server(): return
+	
+	for pid in lobby_players:
+		var p_data = lobby_players[pid]
+		if p_data.team == team and p_data.slot_idx == slot_idx:
+			return 
+	
+	var team_prefix = "Azul" if team == 1 else "Rojo"
+	var pos_suffix = "1" if slot_idx == 0 else "2"
+	var final_name = team_prefix + " " + pos_suffix
+	
+	lobby_players[requesting_id] = {
+		"team": team,
+		"slot_idx": slot_idx,
+		"color": Color.WHITE,
+		"name": final_name
+	}
+	
+	rpc("update_lobby_state", lobby_players)
+
+func _on_color_input(event: InputEvent, panel: Panel, team_color: int):
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var my_id = multiplayer.get_unique_id()
+		
+		if not lobby_players.has(my_id): return
+		if lobby_players[my_id].team != team_color: return
+		
+		var style = panel.get_theme_stylebox("panel")
+		if style is StyleBoxFlat:
+			my_selected_color = style.bg_color
+			rpc_id(1, "request_color_change", my_id, my_selected_color)
+
+@rpc("any_peer", "call_local")
+func request_color_change(id: int, new_color: Color):
+	if not multiplayer.is_server(): return
+	if lobby_players.has(id):
+		lobby_players[id]["color"] = new_color
+		rpc("update_lobby_state", lobby_players)
+
+@rpc("authority", "call_local", "reliable")
+func update_lobby_state(new_lobby_data: Dictionary):
+	lobby_players = new_lobby_data
+	update_lobby_ui()
+
+func update_lobby_ui():
+	var all_slots = []
+	all_slots.append_array(slots_team1)
+	all_slots.append_array(slots_team2)
+	
+	for btn in all_slots:
+		btn.text = "Libre"
+		btn.disabled = false
+	
+	var my_id = multiplayer.get_unique_id()
+	var my_team = -1
+	
+	for pid in lobby_players:
+		var data = lobby_players[pid]
+		var team = data.team
+		var idx = data.slot_idx
+		var p_name = data.name 
+		
+		if pid == my_id:
+			my_team = team
+			player_symbol = team 
+		
+		var target_btn = null
+		if team == 1 and idx < slots_team1.size():
+			target_btn = slots_team1[idx]
+		elif team == 2 and idx < slots_team2.size():
+			target_btn = slots_team2[idx]
+			
+		if target_btn:
+			target_btn.text = p_name
+			target_btn.disabled = true
+			
+	for p in colors_team1: p.modulate.a = 1.0 if my_team == 1 else 0.3
+	for p in colors_team2: p.modulate.a = 1.0 if my_team == 2 else 0.3
+
+func _on_start_game_pressed():
+	rpc("sync_game_state", board, pieces_left_X, pieces_left_O, player_o_net_id, current_game_type)
+	rpc("start_match_from_lobby")
+
+@rpc("call_local", "reliable")
+func start_match_from_lobby():
+	lobby_node.hide()
+	is_game_active = true
+	
+	update_piece_counts_ui()
+	set_pieces_visible(true)
+	
+	if current_game_type == GameType.TIC_TAC_TOE:
+		grid_ttt.show()
+	else:
+		grid_c4.show()

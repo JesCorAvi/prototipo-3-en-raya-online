@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3 uid="uid://b5xg56jie47su"]
+[gd_scene load_steps=8 format=3 uid="uid://b5xg56jie47su"]
 
 [ext_resource type="Script" uid="uid://dhptlx8b4gbof" path="res://scripts/Main.gd" id="1_o5qli"]
 [ext_resource type="PackedScene" uid="uid://3rsc6mcmas4n" path="res://scenes/piece.tscn" id="2_0wfyh"]
@@ -30,6 +30,13 @@ corner_radius_top_left = 90
 corner_radius_top_right = 90
 corner_radius_bottom_right = 90
 corner_radius_bottom_left = 90
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tefeu"]
+bg_color = Color(0.84, 0.84, 0.84, 1)
+corner_radius_top_left = 40
+corner_radius_top_right = 40
+corner_radius_bottom_right = 40
+corner_radius_bottom_left = 40
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_o5qli")
@@ -194,11 +201,10 @@ popup/item_1/text = "Conecta 4"
 popup/item_1/id = 2
 
 [node name="Lobby" type="ColorRect" parent="."]
-visible = false
 offset_left = 355.0
 offset_top = 239.0
 offset_right = 781.0
-offset_bottom = 588.0
+offset_bottom = 660.0
 color = Color(0.13682577, 0.13682574, 0.13682571, 1)
 
 [node name="GridContainer" type="GridContainer" parent="Lobby"]
@@ -287,8 +293,27 @@ layout_mode = 0
 offset_left = 213.0
 offset_top = 1.0
 offset_right = 226.0
-offset_bottom = 348.0
+offset_bottom = 358.0
 color = Color(0, 0, 0, 1)
+
+[node name="Button" type="Button" parent="Lobby"]
+layout_mode = 0
+offset_left = 140.0
+offset_top = 358.0
+offset_right = 298.0
+offset_bottom = 411.0
+theme_override_colors/font_color = Color(0, 0, 0, 1)
+theme_override_colors/font_focus_color = Color(0, 0, 0, 1)
+theme_override_colors/font_pressed_color = Color(0, 0, 0, 1)
+theme_override_colors/font_hover_color = Color(0, 0, 0, 1)
+theme_override_colors/font_hover_pressed_color = Color(0, 0, 0, 1)
+theme_override_colors/icon_normal_color = Color(1, 1, 1, 1)
+theme_override_colors/icon_focus_color = Color(1, 1, 1, 1)
+theme_override_colors/icon_pressed_color = Color(1, 1, 1, 1)
+theme_override_colors/icon_hover_color = Color(1, 1, 1, 1)
+theme_override_colors/icon_hover_pressed_color = Color(1, 1, 1, 1)
+theme_override_styles/normal = SubResource("StyleBoxFlat_tefeu")
+text = "Empezar Partida"
 
 [connection signal="pressed" from="HostButton" to="." method="_on_HostButton_pressed"]
 [connection signal="pressed" from="JoinButton" to="." method="_on_JoinButton_pressed"]
