@@ -7,7 +7,6 @@ extends RigidBody2D
 			update_symbol()
 
 @export var original_position: Vector2
-
 @export var is_dragging: bool = false
 
 var piece_size: float = 128.0 
@@ -73,6 +72,16 @@ func apply_visual_size():
 
 func _physics_process(_delta):
 
+	if not visible:
+		return
+
+	if collision_shape:
+		collision_shape.disabled = is_dragging
+	
+	if multiplayer.has_multiplayer_peer():
+		if multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+			return
+
 	if _local_dragging_state:
 		freeze = true
 		global_position = drag_target_position
@@ -133,7 +142,12 @@ func update_symbol():
 		panel.add_theme_stylebox_override("panel", stylebox)
 
 func _input(event):
+	if not visible: return
 	if not multiplayer.has_multiplayer_peer(): return
+	
+	if multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
+		return
+		
 	var my_id = multiplayer.get_unique_id()
 	
 	var my_team = 0
@@ -163,7 +177,7 @@ func _input(event):
 			else:
 				if _local_dragging_state:
 					_local_dragging_state = false
-					is_dragging = false 
+					is_dragging = false
 					z_index = 0
 					
 					var drop_pos = event.global_position
