@@ -134,7 +134,7 @@ func _generate_connect4_grid():
 
 func _on_game_mode_selected(index: int):
 	var selected_id = option_button.get_item_id(index)
-	var was_active = is_game_active
+	var was_active = is_game_active 
 	
 	if not multiplayer.has_multiplayer_peer():
 		set_game_mode(selected_id)
@@ -322,20 +322,20 @@ func _check_line(symbol: int, start_r: int, start_c: int, step_r: int, step_c: i
 	return true
 
 func game_over(winning_symbol: int):
+
+	await get_tree().create_timer(1.5).timeout
+	
 	var result_text = "¡EMPATE!"
 	var result_color = Color.WHITE
 	
 	if winning_symbol != 0:
 		var winner_name = ""
-		# Personalizamos el mensaje según el juego
 		if current_game_type == GameType.TIC_TAC_TOE:
 			winner_name = "AZUL (X)" if winning_symbol == PLAYER_X else "ROJO (O)"
 		else:
 			winner_name = "AZUL" if winning_symbol == PLAYER_X else "ROJO"
 			
 		result_text = "¡GANA " + winner_name + "!"
-		
-		# Colores para el texto de victoria (Opcional: Usar color del equipo ganador)
 		result_color = Color.BLUE if winning_symbol == PLAYER_X else Color.RED
 		
 	show_game_result(result_text, result_color)
@@ -346,24 +346,25 @@ func show_game_result(result_text: String, color: Color):
 	result_label.add_theme_color_override("font_color", color)
 	result_label.show()
 	
-	grid_ttt.hide()
-	grid_c4.hide()
-	set_pieces_visible(false)
-	
+
 	reset_timer.start()
 
 func _on_ResetTimer_timeout():
 	if multiplayer.is_server():
-		var selected_idx = option_button.selected
-		if selected_idx != -1:
-			var mode_from_ui = option_button.get_item_id(selected_idx)
-			if mode_from_ui != current_game_type:
-				set_game_mode(mode_from_ui)
+		rpc("return_to_lobby")
 
-		reset_game(true)
-		rpc("sync_game_state", board, pieces_left_X, pieces_left_O, player_o_net_id, current_game_type)
+@rpc("call_local", "reliable")
+func return_to_lobby():
+	reset_game(true, true)
+	
+	grid_ttt.hide()
+	grid_c4.hide()
+	set_pieces_visible(false) 
+	
+	if multiplayer.is_server():
+		status_label.text = "Partida finalizada. Configura la siguiente."
 	else:
-		reset_game(true)
+		status_label.text = "Esperando al anfitrión..."
 
 func reset_game(keep_peer: bool = false, show_lobby: bool = true):
 	var total_cells = current_cols * current_rows
@@ -408,11 +409,9 @@ func reset_game(keep_peer: bool = false, show_lobby: bool = true):
 	elif multiplayer.is_server() and keep_peer:
 		if show_lobby: lobby_node.show()
 		else: lobby_node.hide()
-		status_label.text = "Juego terminado. En Lobby."
 	elif keep_peer:
 		if show_lobby: lobby_node.show()
 		else: lobby_node.hide()
-		status_label.text = "Juego terminado. En Lobby."
 
 func reset_all_pieces_visuals():
 	for piece in piece_container.get_children():
@@ -545,33 +544,21 @@ func update_board_ui():
 			cell.text = "" 
 
 func update_piece_counts_ui():
-	# Textos dinámicos según el modo de juego
-	var text_p1 = "Jugador 1"
-	var text_p2 = "Jugador 2"
-	var btn_text_p1 = "Pieza"
-	var btn_text_p2 = "Pieza"
-	
-	if current_game_type == GameType.TIC_TAC_TOE:
-		text_p1 = "Equipo Azul (X)"
-		text_p2 = "Equipo Rojo (O)"
-		btn_text_p1 = "Generar X"
-		btn_text_p2 = "Generar O"
-	elif current_game_type == GameType.CONNECT_4:
-		text_p1 = "Equipo Azul"
-		text_p2 = "Equipo Rojo"
-		btn_text_p1 = "Ficha Azul"
-		btn_text_p2 = "Ficha Roja"
+	var p1_player = "X"
+	var p2_player = "O"
+	var p1_piece = "X"
+	var p2_piece = "O"
 	
 	var my_text = "Espectador"
-	if player_symbol == PLAYER_X:
-		my_text = text_p1
-	elif player_symbol == PLAYER_O:
-		my_text = text_p2
+	if player_symbol == PLAYER_X: my_text = p1_player
+	elif player_symbol == PLAYER_O: my_text = p2_player
 	
 	status_label.text = "Eres: " + my_text
 	
-	if btn_add_x: btn_add_x.text = btn_text_p1
-	if btn_add_o: btn_add_o.text = btn_text_p2
+	if btn_add_x:
+		btn_add_x.text = "Generar pieza " + p1_piece
+	if btn_add_o:
+		btn_add_o.text = "Generar pieza " + p2_piece
 
 func set_pieces_visible(is_visible: bool):
 	for child in piece_container.get_children():
