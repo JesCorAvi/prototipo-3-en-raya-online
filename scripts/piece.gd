@@ -9,7 +9,6 @@ extends RigidBody2D
 @export var original_position: Vector2
 @export var is_dragging: bool = false
 
-# Tamaño por defecto
 var piece_size: float = 128.0 
 
 var current_cell_index: int = -1 
@@ -28,7 +27,6 @@ func _ready():
 	if not main_script:
 		main_script = get_node_or_null("/root/Main")
 	
-	# Sincronizar tamaño con el Main
 	if main_script and "current_piece_size" in main_script:
 		piece_size = main_script.current_piece_size
 
@@ -50,14 +48,11 @@ func _ready():
 func apply_visual_size():
 	if not panel or not collision_shape: return
 	
-	# 1. Ajustar PANEL
 	panel.custom_minimum_size = Vector2(piece_size, piece_size)
 	panel.size = Vector2(piece_size, piece_size)
 	panel.position = Vector2(-piece_size / 2.0, -piece_size / 2.0)
 	
-	# 2. LÓGICA DE TEXTO (CORREGIDA)
-	# Si la pieza es menor a 100px (Conecta 4 es 64px), OCULTAMOS LA LETRA.
-	# Si es grande (3 en Raya es 128px), la mostramos.
+
 	if piece_size < 100:
 		if label: label.visible = false
 	else:
@@ -69,7 +64,6 @@ func apply_visual_size():
 			label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 			label.add_theme_font_size_override("font_size", int(piece_size * 0.6))
 	
-	# 3. Ajustar COLISIÓN
 	if collision_shape.shape is CircleShape2D:
 		collision_shape.shape.radius = piece_size / 2.0
 	collision_shape.position = Vector2.ZERO

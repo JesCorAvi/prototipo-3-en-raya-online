@@ -1,41 +1,34 @@
 extends Node2D
 
-# --- CONFIGURACIÓN DE MODOS DE JUEGO ---
 enum GameType { TIC_TAC_TOE = 1, CONNECT_4 = 2 }
 var current_game_type = GameType.TIC_TAC_TOE
 
-# Configuración 3 en Raya (Original)
 const TTT_COLS = 3
 const TTT_ROWS = 3
 const TTT_WIN_LEN = 3
 const PIECE_SIZE_TTT = 128.0 
 
-# Configuración Conecta 4
 const C4_COLS = 7
 const C4_ROWS = 6
 const C4_WIN_LEN = 4
-# MITAD DE TAMAÑO (64.0) para que sea visible pero encaje en la escala
 const PIECE_SIZE_C4 = 64.0 
 
-# Variables dinámicas (se actualizan al cambiar de juego)
 var current_cols = TTT_COLS
 var current_rows = TTT_ROWS
 var current_win_len = TTT_WIN_LEN
 var current_piece_size = PIECE_SIZE_TTT
 
-# --- CONSTANTES GENERALES ---
 const PLAYER_X = 1
 const PLAYER_O = 2
 const EMPTY = 0
 const DEFAULT_PORT = 10567
 const MAX_PLAYERS = 2
 const MAX_PIECES_TTT = 5
-const MAX_PIECES_C4 = 21 # 21 fichas por jugador para llenar el tablero
+const MAX_PIECES_C4 = 21 
 
 const CURSOR_SCENE_PATH = "res://scenes/cursor.tscn"
 const PIECE_SCENE_PATH = "res://scenes/piece.tscn"
 
-# --- VARIABLES DE ESTADO ---
 var board: Array[int] = []
 var player_symbol: int
 var pieces_left_X: int = MAX_PIECES_TTT
@@ -132,29 +125,26 @@ func _generate_connect4_grid():
 func _on_game_mode_selected(index: int):
 	var selected_id = option_button.get_item_id(index)
 	
-	# CASO 1: Estamos offline (Menú principal)
-	# Actualizamos directamente la variable local.
+	# CASO 1: Offline (Menú principal sin red)
 	if not multiplayer.has_multiplayer_peer():
 		set_game_mode(selected_id)
 		
-	# CASO 2: Somos Servidor (Hosteando)
-	# Usamos RPC para avisar a clientes (y a nosotros mismos via call_local)
+	# CASO 2: Host (Servidor activo)
 	elif multiplayer.is_server():
+		# 1. Cambiamos la configuración del modo
 		rpc("set_game_mode", selected_id)
 		
-	# CASO 3: Somos Cliente
-	# No podemos cambiar el modo, revertimos la UI
+		# 2. CORRECCIÓN: Solo sincronizamos arranque (active=true) si tenemos oponente.
+		# Si get_peers().size() > 0 significa que hay clientes conectados.
+		if multiplayer.get_peers().size() > 0:
+			rpc("sync_game_state", board, pieces_left_X, pieces_left_O, player_o_net_id, current_game_type)
+		
+	# CASO 3: Cliente
 	else:
 		_sync_option_button_ui()
-
 @rpc("any_peer", "call_local", "reliable")
 func set_game_mode(mode_id: int):
 	current_game_type = mode_id
-	
-	# Esta variable determina si debemos tocar la visibilidad de los tableros.
-	# Es TRUE solo si estamos jugando (is_game_active) O si estamos conectados esperando (Lobby).
-	# Es FALSE en el menú inicial, por lo que respeta que los tableros estén ocultos.
-	var should_update_visuals = is_game_active or multiplayer.has_multiplayer_peer()
 	
 	if current_game_type == GameType.TIC_TAC_TOE:
 		current_cols = TTT_COLS
@@ -162,10 +152,10 @@ func set_game_mode(mode_id: int):
 		current_win_len = TTT_WIN_LEN
 		current_piece_size = PIECE_SIZE_TTT
 		
-		# Solo modificamos la visibilidad si estamos en una partida o lobby activo
-		if should_update_visuals:
-			grid_ttt.show()
-			grid_c4.hide()
+		# CORRECCIÓN: Solo nos aseguramos de OCULTAR el que no toca.
+		# No forzamos grid_ttt.show() aquí. Si el juego debe verse, 
+		# sync_game_state lo mostrará.
+		grid_c4.hide()
 			
 		_update_cell_nodes_reference(grid_ttt)
 		
@@ -175,17 +165,17 @@ func set_game_mode(mode_id: int):
 		current_win_len = C4_WIN_LEN
 		current_piece_size = PIECE_SIZE_C4
 		
-		# Solo modificamos la visibilidad si estamos en una partida o lobby activo
-		if should_update_visuals:
-			grid_ttt.hide()
-			grid_c4.show()
+		# CORRECCIÓN: Solo ocultar el contrario.
+		grid_ttt.hide()
 			
 		_update_cell_nodes_reference(grid_c4)
 	
-	# Asegurar que el botón visual coincida con la realidad interna
 	_sync_option_button_ui()
 	
-	# Si estamos conectados, reiniciamos el juego para aplicar cambios
+	# Resetear lógica interna si la red está activa
+	if multiplayer.has_multiplayer_peer():
+		reset_game(multiplayer.has_multiplayer_peer())
+	# Resetear lógica interna
 	if multiplayer.has_multiplayer_peer():
 		reset_game(multiplayer.has_multiplayer_peer())
 func _sync_option_button_ui():
@@ -517,9 +507,9 @@ func _player_disconnected(id: int):
 		remote_cursors.erase(id)
 	reset_game(false)
 
-@rpc("any_peer")
+@rpc("any_peer", "call_local", "reliable") 
 func sync_game_state(new_board: Array[int], new_pieces_X: int, new_pieces_O: int, new_player_o_net_id: int, game_mode: int): 
-	# Primero asegurar que estamos en el modo correcto
+	# Si por error de sincronización el modo no coincide, lo forzamos
 	if current_game_type != game_mode:
 		set_game_mode(game_mode)
 
@@ -534,15 +524,18 @@ func sync_game_state(new_board: Array[int], new_pieces_X: int, new_pieces_O: int
 	
 	if current_game_type == GameType.TIC_TAC_TOE:
 		grid_ttt.show()
+		grid_c4.hide() # Asegurar que el otro se oculta
 	else:
+		grid_ttt.hide() # Asegurar que el otro se oculta
 		grid_c4.show()
 		
+	# Esto vuelve a mostrar los botones de generar piezas
 	set_pieces_visible(true)
 	reset_all_pieces_visuals()
 	
+	# REACTIVACIÓN DEL JUEGO
 	is_game_active = true
 	apply_piece_authorities_local()
-
 # --- UTILIDADES ---
 
 @rpc("any_peer", "unreliable")
@@ -606,4 +599,8 @@ func disable_network_buttons():
 	host_button.disabled = true
 	join_button.disabled = true
 	ip_input.editable = false
-	option_button.disabled = true # Bloquear cambio durante juego
+
+	if multiplayer.is_server():
+		option_button.disabled = false
+	else:
+		option_button.disabled = true
