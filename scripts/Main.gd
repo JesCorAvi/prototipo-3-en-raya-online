@@ -85,11 +85,6 @@ func _ready():
 	# Generar cuadrícula de Conecta 4
 	_generate_connect4_grid()
 	
-	# Inicializar UI
-	grid_ttt.hide()
-	grid_c4.hide()
-	result_label.hide()
-	
 	# Inicializar grupos de piezas originales
 	for child in piece_container.get_children():
 		if child is RigidBody2D:
@@ -100,9 +95,19 @@ func _ready():
 	# OCULTAR PIEZAS EN EL MENÚ INICIAL
 	set_pieces_visible(false)
 
-	# Iniciar en modo por defecto
-	set_game_mode(GameType.TIC_TAC_TOE)
-
+	# Iniciar variables internas del modo por defecto (SIN tocar visuales aún)
+	current_game_type = GameType.TIC_TAC_TOE
+	current_cols = TTT_COLS
+	current_rows = TTT_ROWS
+	current_win_len = TTT_WIN_LEN
+	current_piece_size = PIECE_SIZE_TTT
+	_update_cell_nodes_reference(grid_ttt)
+	
+	# --- CORRECCIÓN FINAL: Forzar ocultación explícita al final del ready ---
+	grid_ttt.hide()
+	grid_c4.hide()
+	result_label.hide()
+	# ----------------------------------------------------------------------
 func _process(_delta):
 	if multiplayer.has_multiplayer_peer() and is_game_active:
 		var mouse_pos = get_viewport().get_mouse_position()
@@ -146,14 +151,22 @@ func _on_game_mode_selected(index: int):
 func set_game_mode(mode_id: int):
 	current_game_type = mode_id
 	
+	# Esta variable determina si debemos tocar la visibilidad de los tableros.
+	# Es TRUE solo si estamos jugando (is_game_active) O si estamos conectados esperando (Lobby).
+	# Es FALSE en el menú inicial, por lo que respeta que los tableros estén ocultos.
+	var should_update_visuals = is_game_active or multiplayer.has_multiplayer_peer()
+	
 	if current_game_type == GameType.TIC_TAC_TOE:
 		current_cols = TTT_COLS
 		current_rows = TTT_ROWS
 		current_win_len = TTT_WIN_LEN
 		current_piece_size = PIECE_SIZE_TTT
-		if is_game_active:
+		
+		# Solo modificamos la visibilidad si estamos en una partida o lobby activo
+		if should_update_visuals:
 			grid_ttt.show()
 			grid_c4.hide()
+			
 		_update_cell_nodes_reference(grid_ttt)
 		
 	elif current_game_type == GameType.CONNECT_4:
@@ -161,9 +174,12 @@ func set_game_mode(mode_id: int):
 		current_rows = C4_ROWS
 		current_win_len = C4_WIN_LEN
 		current_piece_size = PIECE_SIZE_C4
-		if is_game_active:
+		
+		# Solo modificamos la visibilidad si estamos en una partida o lobby activo
+		if should_update_visuals:
 			grid_ttt.hide()
 			grid_c4.show()
+			
 		_update_cell_nodes_reference(grid_c4)
 	
 	# Asegurar que el botón visual coincida con la realidad interna
@@ -172,7 +188,6 @@ func set_game_mode(mode_id: int):
 	# Si estamos conectados, reiniciamos el juego para aplicar cambios
 	if multiplayer.has_multiplayer_peer():
 		reset_game(multiplayer.has_multiplayer_peer())
-
 func _sync_option_button_ui():
 	for i in range(option_button.item_count):
 		if option_button.get_item_id(i) == current_game_type:
@@ -345,7 +360,12 @@ func show_game_result(result_text: String, color: Color):
 	result_label.text = result_text
 	result_label.add_theme_color_override("font_color", color)
 	result_label.show()
-	reset_timer.start() 
+	
+	grid_ttt.hide()
+	grid_c4.hide()
+	set_pieces_visible(false)
+	
+	reset_timer.start()
 
 func _on_ResetTimer_timeout():
 	if multiplayer.is_server():
