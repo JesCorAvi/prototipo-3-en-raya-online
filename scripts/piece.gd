@@ -7,8 +7,7 @@ extends RigidBody2D
 			update_symbol()
 
 @export var original_position: Vector2
-# Esta variable 'is_dragging' se sincroniza por red.
-# El servidor intentará sobrescribirla, por eso no dependemos de ella para la lógica local inmediata.
+
 @export var is_dragging: bool = false
 
 var piece_size: float = 128.0 
@@ -21,7 +20,6 @@ var return_target_pos: Vector2
 
 var main_script = null
 
-# VARIABLE CLAVE: Estado local de arrastre que el servidor no puede tocar/resetear
 var _local_dragging_state: bool = false
 
 @onready var panel: Panel = $Panel
@@ -44,7 +42,6 @@ func _ready():
 	apply_visual_size()
 	update_symbol()
 	
-	# La autoridad inicial es el servidor. NO la cambiamos localmente para evitar errores de consola.
 	set_multiplayer_authority(1)
 	
 	lock_rotation = true
@@ -75,19 +72,16 @@ func apply_visual_size():
 	collision_shape.position = Vector2.ZERO
 
 func _physics_process(_delta):
-	# Si estamos arrastrando localmente, anulamos cualquier física o corrección del servidor
+
 	if _local_dragging_state:
 		freeze = true
 		global_position = drag_target_position
 		linear_velocity = Vector2.ZERO
 		collision_shape.disabled = true
-		# Forzamos la variable sincronizada para que, cuando tengamos autoridad, se envíe true a los demás
 		is_dragging = true
 	else:
-		# Si no arrastramos localmente, obedecemos a la variable sincronizada o a la física
 		collision_shape.disabled = is_dragging
 		
-		# Si somos la autoridad y no estamos arrastrando, aplicamos lógica normal
 		if is_multiplayer_authority():
 			if not is_returning and current_cell_index == -1:
 				linear_velocity = Vector2.ZERO
@@ -103,7 +97,6 @@ func request_drag_authority():
 
 @rpc("any_peer", "call_local")
 func set_new_authority(new_auth_id: int):
-	# Solo aceptamos órdenes del servidor (ID 1)
 	if not multiplayer.is_server() and multiplayer.get_remote_sender_id() != 1: 
 		return
 	set_multiplayer_authority(new_auth_id)
@@ -154,10 +147,8 @@ func _input(event):
 			if event.pressed:
 				if panel.get_global_rect().has_point(event.global_position):
 					
-					# 1. Activamos bandera LOCAL. Esto evita que el servidor nos cancele el arrastre.
 					_local_dragging_state = true
 					
-					# 2. Pedimos autoridad (sin cambiarla localmente a la fuerza para evitar errores)
 					if get_multiplayer_authority() != my_id:
 						rpc_id(1, "request_drag_authority")
 					
@@ -170,10 +161,9 @@ func _input(event):
 					freeze = true 
 					get_viewport().set_input_as_handled()
 			else:
-				# Soltar clic
 				if _local_dragging_state:
 					_local_dragging_state = false
-					is_dragging = false # Soltamos para la red también
+					is_dragging = false 
 					z_index = 0
 					
 					var drop_pos = event.global_position
