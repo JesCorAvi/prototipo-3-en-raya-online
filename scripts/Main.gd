@@ -134,13 +134,14 @@ func _generate_connect4_grid():
 
 func _on_game_mode_selected(index: int):
 	var selected_id = option_button.get_item_id(index)
+	var was_active = is_game_active
 	
 	if not multiplayer.has_multiplayer_peer():
 		set_game_mode(selected_id)
 	elif multiplayer.is_server():
 		rpc("set_game_mode", selected_id)
-		if multiplayer.get_peers().size() > 0:
-			rpc("sync_game_state", board, pieces_left_X, pieces_left_O, player_o_net_id, current_game_type)
+		if was_active:
+			rpc("start_match_from_lobby")
 	else:
 		_sync_option_button_ui()
 
@@ -171,7 +172,11 @@ func set_game_mode(mode_id: int):
 	_sync_option_button_ui()
 	
 	if multiplayer.has_multiplayer_peer():
-		reset_game(true)
+		reset_game(true, not is_game_active)
+	else:
+		lobby_node.hide()
+		grid_ttt.hide()
+		grid_c4.hide()
 
 func _sync_option_button_ui():
 	for i in range(option_button.item_count):
@@ -217,12 +222,8 @@ func attempt_place_piece(new_index: int, piece_path: String, target_pos: Vector2
 		status_label.text = "Primero debes unirte a un juego."
 		return
 	
-	if board.is_empty():
-		status_label.text = "Error: Tablero no inicializado."
-		return
-		
-	if new_index >= board.size():
-		return
+	if board.is_empty(): return 
+	if new_index >= board.size(): return
 
 	if current_game_type == GameType.CONNECT_4 and new_index != -1:
 		new_index = _get_lowest_available_in_column(new_index)
@@ -323,12 +324,20 @@ func _check_line(symbol: int, start_r: int, start_c: int, step_r: int, step_c: i
 func game_over(winning_symbol: int):
 	var result_text = "¡EMPATE!"
 	var result_color = Color.WHITE
+	
 	if winning_symbol != 0:
-		var winner_name = "X" if winning_symbol == PLAYER_X else "O"
+		var winner_name = ""
+		# Personalizamos el mensaje según el juego
+		if current_game_type == GameType.TIC_TAC_TOE:
+			winner_name = "AZUL (X)" if winning_symbol == PLAYER_X else "ROJO (O)"
+		else:
+			winner_name = "AZUL" if winning_symbol == PLAYER_X else "ROJO"
+			
 		result_text = "¡GANA " + winner_name + "!"
-		result_color = Color.RED
-		if winning_symbol == player_symbol:
-			result_color = Color.GREEN
+		
+		# Colores para el texto de victoria (Opcional: Usar color del equipo ganador)
+		result_color = Color.BLUE if winning_symbol == PLAYER_X else Color.RED
+		
 	show_game_result(result_text, result_color)
 
 func show_game_result(result_text: String, color: Color):
@@ -356,7 +365,7 @@ func _on_ResetTimer_timeout():
 	else:
 		reset_game(true)
 
-func reset_game(keep_peer: bool = false):
+func reset_game(keep_peer: bool = false, show_lobby: bool = true):
 	var total_cells = current_cols * current_rows
 	board.resize(total_cells)
 	board.fill(EMPTY)
@@ -397,10 +406,12 @@ func reset_game(keep_peer: bool = false):
 		status_label.text = "Selecciona juego y crea partida."
 		
 	elif multiplayer.is_server() and keep_peer:
-		lobby_node.show()
+		if show_lobby: lobby_node.show()
+		else: lobby_node.hide()
 		status_label.text = "Juego terminado. En Lobby."
 	elif keep_peer:
-		lobby_node.show()
+		if show_lobby: lobby_node.show()
+		else: lobby_node.hide()
 		status_label.text = "Juego terminado. En Lobby."
 
 func reset_all_pieces_visuals():
@@ -534,21 +545,33 @@ func update_board_ui():
 			cell.text = "" 
 
 func update_piece_counts_ui():
-	var p1_player = "X"
-	var p2_player = "O"
-	var p1_piece = "X"
-	var p2_piece = "O"
+	# Textos dinámicos según el modo de juego
+	var text_p1 = "Jugador 1"
+	var text_p2 = "Jugador 2"
+	var btn_text_p1 = "Pieza"
+	var btn_text_p2 = "Pieza"
+	
+	if current_game_type == GameType.TIC_TAC_TOE:
+		text_p1 = "Equipo Azul (X)"
+		text_p2 = "Equipo Rojo (O)"
+		btn_text_p1 = "Generar X"
+		btn_text_p2 = "Generar O"
+	elif current_game_type == GameType.CONNECT_4:
+		text_p1 = "Equipo Azul"
+		text_p2 = "Equipo Rojo"
+		btn_text_p1 = "Ficha Azul"
+		btn_text_p2 = "Ficha Roja"
 	
 	var my_text = "Espectador"
-	if player_symbol == PLAYER_X: my_text = p1_player
-	elif player_symbol == PLAYER_O: my_text = p2_player
+	if player_symbol == PLAYER_X:
+		my_text = text_p1
+	elif player_symbol == PLAYER_O:
+		my_text = text_p2
 	
 	status_label.text = "Eres: " + my_text
 	
-	if btn_add_x:
-		btn_add_x.text = "Generar pieza " + p1_piece
-	if btn_add_o:
-		btn_add_o.text = "Generar pieza " + p2_piece
+	if btn_add_x: btn_add_x.text = btn_text_p1
+	if btn_add_o: btn_add_o.text = btn_text_p2
 
 func set_pieces_visible(is_visible: bool):
 	for child in piece_container.get_children():
