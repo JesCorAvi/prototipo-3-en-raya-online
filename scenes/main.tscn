@@ -1,7 +1,35 @@
-[gd_scene load_steps=3 format=3 uid="uid://b5xg56jie47su"]
+[gd_scene load_steps=7 format=3 uid="uid://b5xg56jie47su"]
 
 [ext_resource type="Script" uid="uid://dhptlx8b4gbof" path="res://scripts/Main.gd" id="1_o5qli"]
 [ext_resource type="PackedScene" uid="uid://3rsc6mcmas4n" path="res://scenes/piece.tscn" id="2_0wfyh"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_0wfyh"]
+bg_color = Color(1.732707e-06, 0.6599851, 0.62300533, 1)
+corner_radius_top_left = 90
+corner_radius_top_right = 90
+corner_radius_bottom_right = 90
+corner_radius_bottom_left = 90
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_sugp2"]
+bg_color = Color(0.13214436, 0.6192551, 0.9999998, 1)
+corner_radius_top_left = 90
+corner_radius_top_right = 90
+corner_radius_bottom_right = 90
+corner_radius_bottom_left = 90
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_jyhfs"]
+bg_color = Color(1, 0.31146246, 0.46514142, 1)
+corner_radius_top_left = 90
+corner_radius_top_right = 90
+corner_radius_bottom_right = 90
+corner_radius_bottom_left = 90
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_tbgi4"]
+bg_color = Color(0.7397895, 2.0094587e-06, 5.7756904e-07, 1)
+corner_radius_top_left = 90
+corner_radius_top_right = 90
+corner_radius_bottom_right = 90
+corner_radius_bottom_left = 90
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1_o5qli")
@@ -164,6 +192,103 @@ popup/item_0/text = "3 en raya"
 popup/item_0/id = 1
 popup/item_1/text = "Conecta 4"
 popup/item_1/id = 2
+
+[node name="Lobby" type="ColorRect" parent="."]
+visible = false
+offset_left = 355.0
+offset_top = 239.0
+offset_right = 781.0
+offset_bottom = 588.0
+color = Color(0.13682577, 0.13682574, 0.13682571, 1)
+
+[node name="GridContainer" type="GridContainer" parent="Lobby"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 22.0
+offset_top = 15.0
+offset_right = -12.0
+offset_bottom = -5.75
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/h_separation = 60
+theme_override_constants/v_separation = 20
+columns = 2
+
+[node name="LabelT1" type="Label" parent="Lobby/GridContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.24705882, 1, 1, 1)
+theme_override_font_sizes/font_size = 40
+text = "Equipo 1"
+horizontal_alignment = 1
+
+[node name="LabelT2" type="Label" parent="Lobby/GridContainer"]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 0.29000002, 0.29000002, 1)
+theme_override_font_sizes/font_size = 40
+text = "Equipo 2"
+horizontal_alignment = 1
+
+[node name="Slot1T1" type="Button" parent="Lobby/GridContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+text = "Slot 1"
+
+[node name="Slot1T2" type="Button" parent="Lobby/GridContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+text = "Slot 1"
+
+[node name="Slot2T1" type="Button" parent="Lobby/GridContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+text = "Slot 2"
+
+[node name="Slot2T2" type="Button" parent="Lobby/GridContainer"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 36
+text = "Slot 2"
+
+[node name="ColorT11" type="Panel" parent="Lobby"]
+layout_mode = 0
+offset_left = 52.0
+offset_top = 276.0
+offset_right = 92.0
+offset_bottom = 316.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_0wfyh")
+
+[node name="Color T12" type="Panel" parent="Lobby"]
+layout_mode = 0
+offset_left = 142.0
+offset_top = 275.0
+offset_right = 182.0
+offset_bottom = 315.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_sugp2")
+
+[node name="ColorT21" type="Panel" parent="Lobby"]
+layout_mode = 0
+offset_left = 248.0
+offset_top = 276.0
+offset_right = 288.0
+offset_bottom = 316.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_jyhfs")
+
+[node name="ColorT22" type="Panel" parent="Lobby"]
+layout_mode = 0
+offset_left = 341.0
+offset_top = 275.0
+offset_right = 381.0
+offset_bottom = 315.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_tbgi4")
+
+[node name="Separador" type="ColorRect" parent="Lobby"]
+layout_mode = 0
+offset_left = 213.0
+offset_top = 1.0
+offset_right = 226.0
+offset_bottom = 348.0
+color = Color(0, 0, 0, 1)
 
 [connection signal="pressed" from="HostButton" to="." method="_on_HostButton_pressed"]
 [connection signal="pressed" from="JoinButton" to="." method="_on_JoinButton_pressed"]
