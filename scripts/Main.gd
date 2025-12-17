@@ -42,9 +42,7 @@ var piece_scene: PackedScene
 var cell_nodes: Array = [] 
 var peer = SteamMultiplayerPeer.new()
 
-# --- VARIABLES STEAM ---
 var steam_lobby_id: int = 0
-# -----------------------
 
 @onready var grid_ttt: GridContainer = $tresenraya
 @onready var grid_c4: GridContainer = $Conecta4
@@ -62,7 +60,6 @@ var steam_lobby_id: int = 0
 @onready var spawn_x_pos = $PieceContainer/SpawnX
 @onready var spawn_o_pos = $PieceContainer/SpawnO
 
-# --- NODOS DEL LOBBY (SALA DE ESPERA) ---
 @onready var lobby_node: Control = $Lobby
 @onready var start_game_button: Button = $Lobby/Button
 @onready var slots_team1 = [$"Lobby/GridContainer/Slot1T1", $"Lobby/GridContainer/Slot2T1"]
@@ -70,7 +67,6 @@ var steam_lobby_id: int = 0
 @onready var colors_team1 = [$Lobby/ColorT11, $"Lobby/Color T12"]
 @onready var colors_team2 = [$Lobby/ColorT21, $Lobby/ColorT22]
 
-# --- NODOS DEL BUSCADOR DE PARTIDAS ---
 @onready var scroll_container: ScrollContainer = $ScrollContainer
 @onready var lobby_list_container: VBoxContainer = $ScrollContainer/LobbyContainer
 @onready var refresh_button: Button = $RefreshButton
@@ -84,25 +80,21 @@ func _ready():
 	if ResourceLoader.exists(PIECE_SCENE_PATH):
 		piece_scene = load(PIECE_SCENE_PATH)
 	
-	# CONEXIONES MULTIPLAYER
 	multiplayer.peer_connected.connect(_player_connected)
 	multiplayer.peer_disconnected.connect(_player_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_connection_failed)
 	
-	# CONEXIONES STEAM
 	Steam.lobby_created.connect(_on_lobby_created)
 	Steam.lobby_joined.connect(_on_lobby_joined)
 	Steam.join_requested.connect(_on_lobby_join_requested)
-	Steam.lobby_match_list.connect(_on_lobby_match_list) # <--- Nuevo: Lista de partidas
+	Steam.lobby_match_list.connect(_on_lobby_match_list)
 	
-	# INTERFAZ
 	btn_add_x.pressed.connect(_on_add_piece_pressed.bind(PLAYER_X))
 	btn_add_o.pressed.connect(_on_add_piece_pressed.bind(PLAYER_O))
 	option_button.item_selected.connect(_on_game_mode_selected)
 	start_game_button.pressed.connect(_on_start_game_pressed)
 	
-	# Conectar botón de refrescar lista
 	if refresh_button:
 		refresh_button.pressed.connect(refresh_lobby_list)
 	
@@ -123,22 +115,18 @@ func _ready():
 	current_piece_size = PIECE_SIZE_TTT
 	_update_cell_nodes_reference(grid_ttt)
 	
-	# Estado inicial visual
 	grid_ttt.hide()
 	grid_c4.hide()
 	result_label.hide()
 	lobby_node.hide()
 	
-	# Inicialmente mostramos el menú principal (Buscador y botones)
 	_set_menu_visibility(true)
 	
-	# CONEXIÓN SLOTS
 	for i in range(slots_team1.size()):
 		slots_team1[i].pressed.connect(_on_slot_pressed.bind(1, i))
 	for i in range(slots_team2.size()):
 		slots_team2[i].pressed.connect(_on_slot_pressed.bind(2, i))
 		
-	# CONEXIÓN COLORES
 	for i in range(colors_team1.size()):
 		colors_team1[i].gui_input.connect(_on_color_input.bind(colors_team1[i], 1))
 	for i in range(colors_team2.size()):
@@ -147,28 +135,24 @@ func _ready():
 	ip_input.placeholder_text = "ID del Lobby (Copia/Pega)"
 
 func _process(_delta):
-	Steam.run_callbacks() # VITAL
+	Steam.run_callbacks() 
 	
 	if multiplayer.has_multiplayer_peer():
 		if multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
 			var mouse_pos = get_viewport().get_mouse_position()
 			rpc("send_cursor_info", mouse_pos, my_selected_color)
 
-# --- GESTIÓN VISUAL DEL MENÚ ---
 func _set_menu_visibility(is_visible: bool):
-	# Elementos del menú principal / buscador
 	if scroll_container: scroll_container.visible = is_visible
 	if refresh_button: refresh_button.visible = is_visible
 	if host_button: host_button.visible = is_visible
 	if join_button: join_button.visible = is_visible
 	if ip_input: ip_input.visible = is_visible
 	
-	# Si ocultamos el menú, limpiamos la lista de servidores para ahorrar recursos visuales
 	if not is_visible and lobby_list_container:
 		for child in lobby_list_container.get_children():
 			child.queue_free()
 
-# --- FUNCIONES DE STEAM ---
 
 func _on_HostButton_pressed():
 	if not Steam.isSteamRunning():
@@ -181,7 +165,6 @@ func _on_HostButton_pressed():
 	join_button.disabled = true
 
 func _on_JoinButton_pressed():
-	# Este es el método manual por ID (opcional si usas la lista)
 	var lobby_str = ip_input.text.strip_edges()
 	if lobby_str.is_empty() or not lobby_str.is_valid_int():
 		status_label.text = "ID inválido."
@@ -191,7 +174,6 @@ func _on_JoinButton_pressed():
 	status_label.text = "Uniendo a Steam..."
 	Steam.joinLobby(lobby_id)
 
-# --- NUEVO: Lógica del Buscador ---
 func refresh_lobby_list():
 	status_label.text = "Buscando partidas..."
 	
@@ -219,14 +201,12 @@ func _on_lobby_match_list(lobbies: Array):
 		if lobby_name == "":
 			lobby_name = "Lobby " + str(lobby_id)
 		
-		# Crear botón para cada partida
 		var btn = Button.new()
 		var mode_txt = " (3 en Raya)" if mode == str(GameType.TIC_TAC_TOE) else " (Conecta 4)"
 		btn.text = lobby_name + mode_txt + " [" + str(num_members) + "/" + str(MAX_PLAYERS) + "]"
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		btn.custom_minimum_size = Vector2(0, 40) # Un poco más alto para fácil click
+		btn.custom_minimum_size = Vector2(0, 40) 
 		
-		# Conectar al pulsarlo
 		btn.pressed.connect(_on_lobby_list_button_pressed.bind(lobby_id))
 		
 		lobby_list_container.add_child(btn)
@@ -236,7 +216,6 @@ func _on_lobby_list_button_pressed(lobby_id: int):
 	host_button.disabled = true
 	join_button.disabled = true 
 	Steam.joinLobby(lobby_id)
-# ----------------------------------
 
 func _on_lobby_created(connect: int, lobby_id: int):
 	if connect == 1:
@@ -278,11 +257,10 @@ func _on_lobby_joined(lobby_id: int, _permissions: int, _locked: bool, response:
 		var my_steam_id = Steam.getSteamID()
 		
 		if id_owner == my_steam_id:
-			return # Ya manejado en created
+			return 
 		
 		status_label.text = "Conectando al Host..."
 		
-		# OCULTAR MENÚ
 		_set_menu_visibility(false)
 		
 		peer.create_client(id_owner, 0)
@@ -293,10 +271,8 @@ func _on_lobby_joined(lobby_id: int, _permissions: int, _locked: bool, response:
 		join_button.disabled = false
 
 func _on_lobby_join_requested(lobby_id: int, _friend_id: int):
-	# Aceptación de invitación de amigos
 	Steam.joinLobby(lobby_id)
 
-# --- FIN FUNCIONES STEAM ---
 
 func _generate_connect4_grid():
 	for child in grid_c4.get_children():
@@ -325,11 +301,9 @@ func _on_game_mode_selected(index: int):
 func set_game_mode(mode_id: int):
 	current_game_type = mode_id
 	
-	# --- NUEVO: Actualizar Steam si somos el Host ---
-	# Si tengo un lobby creado, aviso a Steam del cambio de modo
+
 	if multiplayer.is_server() and steam_lobby_id != 0:
 		Steam.setLobbyData(steam_lobby_id, "mode", str(current_game_type))
-	# ------------------------------------------------
 	
 	if current_game_type == GameType.TIC_TAC_TOE:
 		current_cols = TTT_COLS
@@ -552,14 +526,12 @@ func reset_game(keep_peer: bool = false, show_lobby_ui: bool = true):
 	
 	reset_all_pieces_visuals()
 	
-	# Si desconectamos totalmente (salir al menú principal)
 	if not keep_peer and multiplayer.has_multiplayer_peer():
 		multiplayer.multiplayer_peer = null
 		if steam_lobby_id != 0:
 			Steam.leaveLobby(steam_lobby_id)
 			steam_lobby_id = 0
 	
-	# ESTADO: MENÚ PRINCIPAL
 	if not keep_peer or not multiplayer.has_multiplayer_peer():
 		player_o_net_id = PLAYER_O
 		for peer_id in remote_cursors:
@@ -567,7 +539,6 @@ func reset_game(keep_peer: bool = false, show_lobby_ui: bool = true):
 				remote_cursors[peer_id].queue_free()
 		remote_cursors.clear()
 		
-		# Mostrar menú, ocultar juego/sala
 		_set_menu_visibility(true) 
 		host_button.disabled = false
 		join_button.disabled = false
@@ -578,8 +549,6 @@ func reset_game(keep_peer: bool = false, show_lobby_ui: bool = true):
 		lobby_node.hide()
 		status_label.text = "Crea o busca una partida."
 		
-	# ESTADO: SALA DE ESPERA (LOBBY)
-	elif multiplayer.is_server() and keep_peer:
 		if show_lobby_ui: lobby_node.show()
 		else: lobby_node.hide()
 	elif keep_peer:
@@ -607,7 +576,7 @@ func reset_all_pieces_visuals():
 func _on_connected_to_server():
 	status_label.text = "¡Conectado! Esperando al Host..."
 	if not multiplayer.is_server():
-		show_lobby(false) # El cliente ve la sala (slots)
+		show_lobby(false)
 
 func _connection_failed():
 	status_label.text = "Error de conexión."
@@ -643,7 +612,7 @@ func sync_game_state(new_board: Array[int], new_pieces_X: int, new_pieces_O: int
 	update_board_ui()
 	update_piece_counts_ui()
 	
-	_set_menu_visibility(false) # Asegurar que menú está oculto
+	_set_menu_visibility(false) 
 	
 	if current_game_type == GameType.TIC_TAC_TOE:
 		grid_ttt.show()
@@ -704,10 +673,8 @@ func show_lobby(is_host: bool):
 	start_game_button.visible = is_host
 	update_lobby_ui()
 
-# --- SELECCIÓN DE SLOTS CON NOMBRE DE STEAM ---
 
 func _on_slot_pressed(team: int, slot_idx: int):
-	# MODIFICADO: Ahora enviamos nuestro nombre de Steam
 	var my_steam_name = Steam.getPersonaName()
 	rpc_id(1, "request_slot_selection", multiplayer.get_unique_id(), team, slot_idx, my_steam_name)
 
@@ -720,12 +687,11 @@ func request_slot_selection(requesting_id: int, team: int, slot_idx: int, player
 		if p_data.team == team and p_data.slot_idx == slot_idx:
 			return 
 	
-	# Usamos el nombre que nos envió el cliente
 	lobby_players[requesting_id] = {
 		"team": team,
 		"slot_idx": slot_idx,
 		"color": Color.WHITE,
-		"name": player_name # <--- Nombre Real
+		"name": player_name 
 	}
 	rpc("update_lobby_state", lobby_players)
 
