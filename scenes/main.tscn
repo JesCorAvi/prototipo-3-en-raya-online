@@ -201,6 +201,7 @@ popup/item_1/text = "Conecta 4"
 popup/item_1/id = 2
 
 [node name="Lobby" type="ColorRect" parent="."]
+visible = false
 offset_left = 355.0
 offset_top = 239.0
 offset_right = 781.0
@@ -336,6 +337,22 @@ theme_override_colors/icon_hover_color = Color(1, 1, 1, 1)
 theme_override_colors/icon_hover_pressed_color = Color(1, 1, 1, 1)
 theme_override_styles/normal = SubResource("StyleBoxFlat_tefeu")
 text = "Empezar Partida"
+
+[node name="ScrollContainer" type="ScrollContainer" parent="."]
+offset_left = 374.0
+offset_top = 83.0
+offset_right = 842.0
+offset_bottom = 629.0
+
+[node name="LobbyContainer" type="VBoxContainer" parent="ScrollContainer"]
+layout_mode = 2
+
+[node name="RefreshButton" type="Button" parent="."]
+offset_left = 526.0
+offset_top = 655.0
+offset_right = 655.0
+offset_bottom = 686.0
+text = "Buscar Partidas"
 
 [connection signal="pressed" from="HostButton" to="." method="_on_HostButton_pressed"]
 [connection signal="pressed" from="JoinButton" to="." method="_on_JoinButton_pressed"]
