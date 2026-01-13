@@ -29,6 +29,7 @@ const MAX_PIECES_C4 = 21
 const CURSOR_SCENE_PATH = "res://scenes/cursor.tscn"
 const PIECE_SCENE_PATH = "res://scenes/piece.tscn"
 const GAME_VERSION_ID = "tres_en_raya_yisus_v1"
+const DEFAULT_PORT = 7777 # Puerto para conexión IP Directa
 
 var board: Array[int] = []
 var player_symbol: int
@@ -40,7 +41,7 @@ var remote_cursors: Dictionary = {}
 var cursor_scene: PackedScene
 var piece_scene: PackedScene
 var cell_nodes: Array = [] 
-var peer = SteamMultiplayerPeer.new()
+var peer # Variable genérica para el peer de red
 
 var steam_lobby_id: int = 0
 
@@ -71,10 +72,16 @@ var steam_lobby_id: int = 0
 @onready var lobby_list_container: VBoxContainer = $ScrollContainer/LobbyContainer
 @onready var refresh_button: Button = $RefreshButton
 
+# Referencia al nuevo CheckBox para elegir Steam o IP
+@onready var steam_check: CheckBox = $SteamCheckBox 
+
 var lobby_players: Dictionary = {}
 var my_selected_color: Color = Color.WHITE
 
 func _ready():
+	# Inicializamos peer por defecto con Steam, pero se cambiará si se usa IP
+	peer = SteamMultiplayerPeer.new()
+
 	if ResourceLoader.exists(CURSOR_SCENE_PATH):
 		cursor_scene = load(CURSOR_SCENE_PATH)
 	if ResourceLoader.exists(PIECE_SCENE_PATH):
@@ -97,6 +104,11 @@ func _ready():
 	
 	if refresh_button:
 		refresh_button.pressed.connect(refresh_lobby_list)
+	
+	# Configurar el CheckBox si existe
+	if steam_check:
+		steam_check.toggled.connect(_on_steam_check_toggled)
+		_on_steam_check_toggled(steam_check.button_pressed)
 	
 	_generate_connect4_grid()
 	
@@ -131,8 +143,6 @@ func _ready():
 		colors_team1[i].gui_input.connect(_on_color_input.bind(colors_team1[i], 1))
 	for i in range(colors_team2.size()):
 		colors_team2[i].gui_input.connect(_on_color_input.bind(colors_team2[i], 2))
-		
-	ip_input.placeholder_text = "ID del Lobby (Copia/Pega)"
 
 func _process(_delta):
 	Steam.run_callbacks() 
@@ -142,45 +152,92 @@ func _process(_delta):
 			var mouse_pos = get_viewport().get_mouse_position()
 			rpc("send_cursor_info", mouse_pos, my_selected_color)
 
+# --- NUEVAS FUNCIONES DE APOYO ---
+
+func get_player_name() -> String:
+	if steam_check and steam_check.button_pressed and Steam.isSteamRunning():
+		return Steam.getPersonaName()
+	else:
+		return "Jugador_" + str(multiplayer.get_unique_id())
+
+func _on_steam_check_toggled(is_steam: bool):
+	if is_steam:
+		ip_input.placeholder_text = "ID del Lobby (Copia/Pega)"
+		if refresh_button: refresh_button.disabled = false
+	else:
+		ip_input.placeholder_text = "IP del Host (ej: 127.0.0.1)"
+		if refresh_button: refresh_button.disabled = true
+
+# ---------------------------------
+
 func _set_menu_visibility(is_visible: bool):
 	if scroll_container: scroll_container.visible = is_visible
 	if refresh_button: refresh_button.visible = is_visible
 	if host_button: host_button.visible = is_visible
 	if join_button: join_button.visible = is_visible
 	if ip_input: ip_input.visible = is_visible
+	if steam_check: steam_check.visible = is_visible
 	
 	if not is_visible and lobby_list_container:
 		for child in lobby_list_container.get_children():
 			child.queue_free()
 
-
 func _on_HostButton_pressed():
-	if not Steam.isSteamRunning():
-		status_label.text = "Error: Steam no está corriendo."
-		return
+	# Lógica condicional: Steam o IP
+	if steam_check and steam_check.button_pressed:
+		if not Steam.isSteamRunning():
+			status_label.text = "Error: Steam no está corriendo."
+			return
 
-	Steam.createLobby(Steam.LOBBY_TYPE_PUBLIC, MAX_PLAYERS)
-	status_label.text = "Creando Lobby..."
-	host_button.disabled = true
-	join_button.disabled = true
+		Steam.createLobby(Steam.LOBBY_TYPE_PUBLIC, MAX_PLAYERS)
+		status_label.text = "Creando Lobby Steam..."
+		host_button.disabled = true
+		join_button.disabled = true
+	else:
+		# Lógica ENet (IP)
+		peer = ENetMultiplayerPeer.new()
+		var error = peer.create_server(DEFAULT_PORT, MAX_PLAYERS)
+		
+		if error == OK:
+			multiplayer.set_multiplayer_peer(peer)
+			status_label.text = "Servidor IP iniciado."
+			steam_lobby_id = 0 
+			
+			_set_menu_visibility(false)
+			show_lobby(true) 
+		else:
+			status_label.text = "Error al crear servidor IP."
 
 func _on_JoinButton_pressed():
-	var lobby_str = ip_input.text.strip_edges()
-	if lobby_str.is_empty() or not lobby_str.is_valid_int():
-		status_label.text = "ID inválido."
-		return
+	var input_str = ip_input.text.strip_edges()
+	
+	if steam_check and steam_check.button_pressed:
+		if input_str.is_empty() or not input_str.is_valid_int():
+			status_label.text = "ID inválido."
+			return
 
-	var lobby_id = int(lobby_str)
-	status_label.text = "Uniendo a Steam..."
-	Steam.joinLobby(lobby_id)
+		var lobby_id = int(input_str)
+		status_label.text = "Uniendo a Steam..."
+		Steam.joinLobby(lobby_id)
+	else:
+		# Conexión IP
+		status_label.text = "Conectando a IP..."
+		peer = ENetMultiplayerPeer.new()
+		var target_ip = input_str if input_str.length() > 0 else "127.0.0.1"
+		var error = peer.create_client(target_ip, DEFAULT_PORT)
+		
+		if error == OK:
+			multiplayer.set_multiplayer_peer(peer)
+			_set_menu_visibility(false)
+		else:
+			status_label.text = "Error al conectar."
 
 func refresh_lobby_list():
+	if steam_check and not steam_check.button_pressed: return
+	
 	status_label.text = "Buscando partidas..."
-	
 	Steam.addRequestLobbyListDistanceFilter(Steam.LOBBY_DISTANCE_FILTER_WORLDWIDE)
-	
 	Steam.addRequestLobbyListStringFilter("game_version", GAME_VERSION_ID, Steam.LOBBY_COMPARISON_EQUAL)
-	
 	Steam.requestLobbyList()
 	
 func _on_lobby_match_list(lobbies: Array):
@@ -222,7 +279,6 @@ func _on_lobby_created(connect: int, lobby_id: int):
 		steam_lobby_id = lobby_id 
 		print("Lobby de Steam creado: ID " + str(lobby_id))
 		
-
 		var name_lobby = "Partida de " + Steam.getPersonaName()
 		Steam.setLobbyData(lobby_id, "name", name_lobby)
 		
@@ -263,6 +319,7 @@ func _on_lobby_joined(lobby_id: int, _permissions: int, _locked: bool, response:
 		
 		_set_menu_visibility(false)
 		
+		peer = SteamMultiplayerPeer.new() 
 		peer.create_client(id_owner, 0)
 		multiplayer.set_multiplayer_peer(peer)
 	else:
@@ -288,7 +345,7 @@ func _on_game_mode_selected(index: int):
 	var selected_id = option_button.get_item_id(index)
 	var was_active = is_game_active 
 	
-	if steam_lobby_id == 0:
+	if steam_lobby_id == 0 and not multiplayer.has_multiplayer_peer():
 		set_game_mode(selected_id)
 	elif multiplayer.is_server():
 		rpc("set_game_mode", selected_id)
@@ -301,7 +358,6 @@ func _on_game_mode_selected(index: int):
 func set_game_mode(mode_id: int):
 	current_game_type = mode_id
 	
-
 	if multiplayer.is_server() and steam_lobby_id != 0:
 		Steam.setLobbyData(steam_lobby_id, "mode", str(current_game_type))
 	
@@ -327,7 +383,7 @@ func set_game_mode(mode_id: int):
 	
 	_sync_option_button_ui()
 	
-	if multiplayer.has_multiplayer_peer() and steam_lobby_id != 0:
+	if multiplayer.has_multiplayer_peer():
 		reset_game(true, not is_game_active)
 	else:
 		lobby_node.hide()
@@ -548,7 +604,6 @@ func reset_game(keep_peer: bool = false, show_lobby_ui: bool = true):
 		set_pieces_visible(false)
 		lobby_node.hide()
 		status_label.text = "Crea o busca una partida."
-		
 		if show_lobby_ui: lobby_node.show()
 		else: lobby_node.hide()
 	elif keep_peer:
@@ -675,7 +730,8 @@ func show_lobby(is_host: bool):
 
 
 func _on_slot_pressed(team: int, slot_idx: int):
-	var my_steam_name = Steam.getPersonaName()
+	# USAMOS NOMBRE GENÉRICO
+	var my_steam_name = get_player_name()
 	rpc_id(1, "request_slot_selection", multiplayer.get_unique_id(), team, slot_idx, my_steam_name)
 
 @rpc("any_peer", "call_local")
