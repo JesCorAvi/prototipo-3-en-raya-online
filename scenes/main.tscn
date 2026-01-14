@@ -355,10 +355,10 @@ offset_bottom = 686.0
 text = "Buscar Partidas"
 
 [node name="SteamCheckBox" type="CheckBox" parent="."]
-offset_left = 147.0
-offset_top = 100.0
-offset_right = 264.0
-offset_bottom = 131.0
+offset_left = 41.0
+offset_top = 23.0
+offset_right = 158.0
+offset_bottom = 54.0
 button_pressed = true
 text = "Usar Steam"
 

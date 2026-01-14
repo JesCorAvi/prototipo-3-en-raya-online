@@ -29,7 +29,7 @@ const MAX_PIECES_C4 = 21
 const CURSOR_SCENE_PATH = "res://scenes/cursor.tscn"
 const PIECE_SCENE_PATH = "res://scenes/piece.tscn"
 const GAME_VERSION_ID = "tres_en_raya_yisus_v1"
-const DEFAULT_PORT = 7777 # Puerto para conexión IP Directa
+const DEFAULT_PORT = 7777
 
 var board: Array[int] = []
 var player_symbol: int
@@ -41,7 +41,7 @@ var remote_cursors: Dictionary = {}
 var cursor_scene: PackedScene
 var piece_scene: PackedScene
 var cell_nodes: Array = [] 
-var peer # Variable genérica para el peer de red
+var peer
 
 var steam_lobby_id: int = 0
 
@@ -72,14 +72,12 @@ var steam_lobby_id: int = 0
 @onready var lobby_list_container: VBoxContainer = $ScrollContainer/LobbyContainer
 @onready var refresh_button: Button = $RefreshButton
 
-# Referencia al nuevo CheckBox para elegir Steam o IP
 @onready var steam_check: CheckBox = $SteamCheckBox 
 
 var lobby_players: Dictionary = {}
 var my_selected_color: Color = Color.WHITE
 
 func _ready():
-	# Inicializamos peer por defecto con Steam, pero se cambiará si se usa IP
 	peer = SteamMultiplayerPeer.new()
 
 	if ResourceLoader.exists(CURSOR_SCENE_PATH):
@@ -105,7 +103,6 @@ func _ready():
 	if refresh_button:
 		refresh_button.pressed.connect(refresh_lobby_list)
 	
-	# Configurar el CheckBox si existe
 	if steam_check:
 		steam_check.toggled.connect(_on_steam_check_toggled)
 		_on_steam_check_toggled(steam_check.button_pressed)
@@ -152,7 +149,6 @@ func _process(_delta):
 			var mouse_pos = get_viewport().get_mouse_position()
 			rpc("send_cursor_info", mouse_pos, my_selected_color)
 
-# --- NUEVAS FUNCIONES DE APOYO ---
 
 func get_player_name() -> String:
 	if steam_check and steam_check.button_pressed and Steam.isSteamRunning():
@@ -168,7 +164,6 @@ func _on_steam_check_toggled(is_steam: bool):
 		ip_input.placeholder_text = "IP del Host (ej: 127.0.0.1)"
 		if refresh_button: refresh_button.disabled = true
 
-# ---------------------------------
 
 func _set_menu_visibility(is_visible: bool):
 	if scroll_container: scroll_container.visible = is_visible
@@ -183,7 +178,6 @@ func _set_menu_visibility(is_visible: bool):
 			child.queue_free()
 
 func _on_HostButton_pressed():
-	# Lógica condicional: Steam o IP
 	if steam_check and steam_check.button_pressed:
 		if not Steam.isSteamRunning():
 			status_label.text = "Error: Steam no está corriendo."
@@ -194,7 +188,6 @@ func _on_HostButton_pressed():
 		host_button.disabled = true
 		join_button.disabled = true
 	else:
-		# Lógica ENet (IP)
 		peer = ENetMultiplayerPeer.new()
 		var error = peer.create_server(DEFAULT_PORT, MAX_PLAYERS)
 		
@@ -220,7 +213,6 @@ func _on_JoinButton_pressed():
 		status_label.text = "Uniendo a Steam..."
 		Steam.joinLobby(lobby_id)
 	else:
-		# Conexión IP
 		status_label.text = "Conectando a IP..."
 		peer = ENetMultiplayerPeer.new()
 		var target_ip = input_str if input_str.length() > 0 else "127.0.0.1"
@@ -730,7 +722,6 @@ func show_lobby(is_host: bool):
 
 
 func _on_slot_pressed(team: int, slot_idx: int):
-	# USAMOS NOMBRE GENÉRICO
 	var my_steam_name = get_player_name()
 	rpc_id(1, "request_slot_selection", multiplayer.get_unique_id(), team, slot_idx, my_steam_name)
 
@@ -742,6 +733,22 @@ func request_slot_selection(requesting_id: int, team: int, slot_idx: int, player
 		var p_data = lobby_players[pid]
 		if p_data.team == team and p_data.slot_idx == slot_idx:
 			return 
+	
+
+	if steam_lobby_id == 0:
+		var taken_numbers = []
+		for pid in lobby_players:
+			var p_name = lobby_players[pid]["name"]
+			if p_name.begins_with("Jugador "):
+				var num_str = p_name.trim_prefix("Jugador ")
+				if num_str.is_valid_int():
+					taken_numbers.append(int(num_str))
+		
+		var new_number = 1
+		while new_number in taken_numbers:
+			new_number += 1
+			
+		player_name = "Jugador " + str(new_number)
 	
 	lobby_players[requesting_id] = {
 		"team": team,
