@@ -5,6 +5,7 @@ extends Node2D
 
 var _style_is_unique: bool = false
 
+
 func _ready():
 	_make_style_unique()
 
