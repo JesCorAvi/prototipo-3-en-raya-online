@@ -1,27 +1,12 @@
 extends Node2D
 
-enum GameType { TIC_TAC_TOE = 1, CONNECT_4 = 2 }
-var current_game_type = GameType.TIC_TAC_TOE
+var game_rules = GameRules.new()
+var lobby_manager = LobbyManager.new()
 
-const TTT_COLS = 3
-const TTT_ROWS = 3
-const TTT_WIN_LEN = 3
-const PIECE_SIZE_TTT = 128.0 
-
-const C4_COLS = 7
-const C4_ROWS = 6
-const C4_WIN_LEN = 4
-const PIECE_SIZE_C4 = 64.0 
-
-var current_cols = TTT_COLS
-var current_rows = TTT_ROWS
-var current_win_len = TTT_WIN_LEN
-var current_piece_size = PIECE_SIZE_TTT
+@onready var steam_manager = $SteamManager 
 
 const PLAYER_X = 1
 const PLAYER_O = 2
-const EMPTY = 0
-
 const MAX_PLAYERS = 2 
 const MAX_PIECES_TTT = 5
 const MAX_PIECES_C4 = 21 
@@ -31,7 +16,11 @@ const PIECE_SCENE_PATH = "res://scenes/piece.tscn"
 const GAME_VERSION_ID = "tres_en_raya_yisus_v1"
 const DEFAULT_PORT = 7777
 
-var board: Array[int] = []
+const PIECE_SIZE_TTT = 128.0 
+const PIECE_SIZE_C4 = 64.0 
+
+var current_piece_size = PIECE_SIZE_TTT
+
 var player_symbol: int
 var pieces_left_X: int = MAX_PIECES_TTT
 var pieces_left_O: int = MAX_PIECES_TTT
@@ -42,8 +31,9 @@ var cursor_scene: PackedScene
 var piece_scene: PackedScene
 var cell_nodes: Array = [] 
 var peer
-
 var steam_lobby_id: int = 0
+
+var my_selected_color: Color = Color.WHITE
 
 @onready var grid_ttt: GridContainer = $tresenraya
 @onready var grid_c4: GridContainer = $Conecta4
@@ -71,13 +61,12 @@ var steam_lobby_id: int = 0
 @onready var scroll_container: ScrollContainer = $ScrollContainer
 @onready var lobby_list_container: VBoxContainer = $ScrollContainer/LobbyContainer
 @onready var refresh_button: Button = $RefreshButton
-
 @onready var steam_check: CheckBox = $SteamCheckBox 
 
-var lobby_players: Dictionary = {}
-var my_selected_color: Color = Color.WHITE
-
 func _ready():
+
+	game_rules.setup_game(GameRules.GameType.TIC_TAC_TOE)
+	
 	peer = SteamMultiplayerPeer.new()
 
 	if ResourceLoader.exists(CURSOR_SCENE_PATH):
@@ -90,15 +79,19 @@ func _ready():
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_connection_failed)
 	
-	Steam.lobby_created.connect(_on_lobby_created)
-	Steam.lobby_joined.connect(_on_lobby_joined)
-	Steam.join_requested.connect(_on_lobby_join_requested)
-	Steam.lobby_match_list.connect(_on_lobby_match_list)
+	if steam_manager:
+		steam_manager.lobby_created_success.connect(_on_steam_lobby_created_success)
+		steam_manager.lobby_created_fail.connect(func(): status_label.text = "Error al crear Lobby Steam")
+		steam_manager.lobby_joined_success.connect(_on_steam_lobby_joined_success)
+		steam_manager.lobby_join_fail.connect(func(): status_label.text = "Fallo al unirse.")
+		steam_manager.lobby_list_updated.connect(_on_steam_lobby_list_updated)
 	
 	btn_add_x.pressed.connect(_on_add_piece_pressed.bind(PLAYER_X))
 	btn_add_o.pressed.connect(_on_add_piece_pressed.bind(PLAYER_O))
 	option_button.item_selected.connect(_on_game_mode_selected)
 	start_game_button.pressed.connect(_on_start_game_pressed)
+	host_button.pressed.connect(_on_HostButton_pressed)
+	join_button.pressed.connect(_on_JoinButton_pressed)
 	
 	if refresh_button:
 		refresh_button.pressed.connect(refresh_lobby_list)
@@ -108,51 +101,46 @@ func _ready():
 		_on_steam_check_toggled(steam_check.button_pressed)
 	
 	_generate_connect4_grid()
+	_initialize_initial_pieces()
 	
-	for child in piece_container.get_children():
-		if child is RigidBody2D:
-			child.add_to_group("initial_pieces")
-			if "original_position" in child:
-				child.original_position = child.global_position
-
 	set_pieces_visible(false)
-
-	current_game_type = GameType.TIC_TAC_TOE
-	current_cols = TTT_COLS
-	current_rows = TTT_ROWS
-	current_win_len = TTT_WIN_LEN
-	current_piece_size = PIECE_SIZE_TTT
 	_update_cell_nodes_reference(grid_ttt)
 	
 	grid_ttt.hide()
 	grid_c4.hide()
 	result_label.hide()
 	lobby_node.hide()
-	
 	_set_menu_visibility(true)
 	
-	for i in range(slots_team1.size()):
-		slots_team1[i].pressed.connect(_on_slot_pressed.bind(1, i))
-	for i in range(slots_team2.size()):
-		slots_team2[i].pressed.connect(_on_slot_pressed.bind(2, i))
-		
-	for i in range(colors_team1.size()):
-		colors_team1[i].gui_input.connect(_on_color_input.bind(colors_team1[i], 1))
-	for i in range(colors_team2.size()):
-		colors_team2[i].gui_input.connect(_on_color_input.bind(colors_team2[i], 2))
+	_connect_lobby_ui_slots()
 
 func _process(_delta):
-	Steam.run_callbacks() 
-	
 	if multiplayer.has_multiplayer_peer():
 		if multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
 			var mouse_pos = get_viewport().get_mouse_position()
 			rpc("send_cursor_info", mouse_pos, my_selected_color)
 
 
+func _initialize_initial_pieces():
+	for child in piece_container.get_children():
+		if child is RigidBody2D:
+			child.add_to_group("initial_pieces")
+			if "original_position" in child:
+				child.original_position = child.global_position
+
+func _connect_lobby_ui_slots():
+	for i in range(slots_team1.size()):
+		slots_team1[i].pressed.connect(_on_slot_pressed.bind(1, i))
+	for i in range(slots_team2.size()):
+		slots_team2[i].pressed.connect(_on_slot_pressed.bind(2, i))
+	for i in range(colors_team1.size()):
+		colors_team1[i].gui_input.connect(_on_color_input.bind(colors_team1[i], 1))
+	for i in range(colors_team2.size()):
+		colors_team2[i].gui_input.connect(_on_color_input.bind(colors_team2[i], 2))
+
 func get_player_name() -> String:
-	if steam_check and steam_check.button_pressed and Steam.isSteamRunning():
-		return Steam.getPersonaName()
+	if steam_manager and steam_manager.steam_username != "":
+		return steam_manager.steam_username
 	else:
 		return "Jugador_" + str(multiplayer.get_unique_id())
 
@@ -163,7 +151,6 @@ func _on_steam_check_toggled(is_steam: bool):
 	else:
 		ip_input.placeholder_text = "IP del Host (ej: 127.0.0.1)"
 		if refresh_button: refresh_button.disabled = true
-
 
 func _set_menu_visibility(is_visible: bool):
 	if scroll_container: scroll_container.visible = is_visible
@@ -177,25 +164,20 @@ func _set_menu_visibility(is_visible: bool):
 		for child in lobby_list_container.get_children():
 			child.queue_free()
 
+
 func _on_HostButton_pressed():
 	if steam_check and steam_check.button_pressed:
-		if not Steam.isSteamRunning():
-			status_label.text = "Error: Steam no está corriendo."
-			return
-
-		Steam.createLobby(Steam.LOBBY_TYPE_PUBLIC, MAX_PLAYERS)
 		status_label.text = "Creando Lobby Steam..."
 		host_button.disabled = true
 		join_button.disabled = true
+		steam_manager.create_lobby(Steam.LOBBY_TYPE_PUBLIC, MAX_PLAYERS)
 	else:
 		peer = ENetMultiplayerPeer.new()
 		var error = peer.create_server(DEFAULT_PORT, MAX_PLAYERS)
-		
 		if error == OK:
 			multiplayer.set_multiplayer_peer(peer)
 			status_label.text = "Servidor IP iniciado."
 			steam_lobby_id = 0 
-			
 			_set_menu_visibility(false)
 			show_lobby(true) 
 		else:
@@ -208,31 +190,61 @@ func _on_JoinButton_pressed():
 		if input_str.is_empty() or not input_str.is_valid_int():
 			status_label.text = "ID inválido."
 			return
-
-		var lobby_id = int(input_str)
 		status_label.text = "Uniendo a Steam..."
-		Steam.joinLobby(lobby_id)
+		steam_manager.join_lobby(int(input_str))
 	else:
 		status_label.text = "Conectando a IP..."
 		peer = ENetMultiplayerPeer.new()
 		var target_ip = input_str if input_str.length() > 0 else "127.0.0.1"
 		var error = peer.create_client(target_ip, DEFAULT_PORT)
-		
 		if error == OK:
 			multiplayer.set_multiplayer_peer(peer)
 			_set_menu_visibility(false)
 		else:
 			status_label.text = "Error al conectar."
 
+func _on_steam_lobby_created_success(lobby_id: int):
+	steam_lobby_id = lobby_id
+	print("Lobby de Steam creado: ID " + str(lobby_id))
+	
+	var name_lobby = "Partida de " + steam_manager.steam_username
+	var lobby_data = {
+		"name": name_lobby,
+		"mode": str(game_rules.current_type),
+		"game_version": GAME_VERSION_ID
+	}
+	steam_manager.setup_lobby_data(lobby_id, lobby_data)
+	DisplayServer.clipboard_set(str(lobby_id))
+	
+	peer = SteamMultiplayerPeer.new() 
+	var error = peer.create_host(0)
+	
+	if error == OK:
+		multiplayer.set_multiplayer_peer(peer)
+		status_label.text = "Lobby ID: " + str(lobby_id)
+		_set_menu_visibility(false)
+		show_lobby(true) 
+		Steam.allowP2PPacketRelay(true)
+	else:
+		status_label.text = "Fallo al crear Host"
+		host_button.disabled = false
+
+func _on_steam_lobby_joined_success(lobby_id: int, owner_id: int):
+	var my_steam_id = Steam.getSteamID()
+	if owner_id == my_steam_id: return 
+	
+	status_label.text = "Conectando al Host..."
+	_set_menu_visibility(false)
+	
+	peer = SteamMultiplayerPeer.new() 
+	peer.create_client(owner_id, 0)
+	multiplayer.set_multiplayer_peer(peer)
+
 func refresh_lobby_list():
-	if steam_check and not steam_check.button_pressed: return
-	
 	status_label.text = "Buscando partidas..."
-	Steam.addRequestLobbyListDistanceFilter(Steam.LOBBY_DISTANCE_FILTER_WORLDWIDE)
-	Steam.addRequestLobbyListStringFilter("game_version", GAME_VERSION_ID, Steam.LOBBY_COMPARISON_EQUAL)
-	Steam.requestLobbyList()
-	
-func _on_lobby_match_list(lobbies: Array):
+	steam_manager.refresh_lobby_list(GAME_VERSION_ID)
+
+func _on_steam_lobby_list_updated(lobbies: Array):
 	for child in lobby_list_container.get_children():
 		child.queue_free()
 	
@@ -241,97 +253,21 @@ func _on_lobby_match_list(lobbies: Array):
 		return
 		
 	status_label.text = "Partidas encontradas: " + str(lobbies.size())
-	
 	for lobby_id in lobbies:
 		var lobby_name = Steam.getLobbyData(lobby_id, "name")
 		var mode = Steam.getLobbyData(lobby_id, "mode")
 		var num_members = Steam.getNumLobbyMembers(lobby_id)
 		
-		if lobby_name == "":
-			lobby_name = "Lobby " + str(lobby_id)
+		if lobby_name == "": lobby_name = "Lobby " + str(lobby_id)
 		
 		var btn = Button.new()
-		var mode_txt = " (3 en Raya)" if mode == str(GameType.TIC_TAC_TOE) else " (Conecta 4)"
+		var mode_txt = " (3 en Raya)" if mode == str(GameRules.GameType.TIC_TAC_TOE) else " (Conecta 4)"
 		btn.text = lobby_name + mode_txt + " [" + str(num_members) + "/" + str(MAX_PLAYERS) + "]"
 		btn.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		btn.custom_minimum_size = Vector2(0, 40) 
-		
-		btn.pressed.connect(_on_lobby_list_button_pressed.bind(lobby_id))
-		
+		btn.pressed.connect(func(): steam_manager.join_lobby(lobby_id))
 		lobby_list_container.add_child(btn)
 
-func _on_lobby_list_button_pressed(lobby_id: int):
-	status_label.text = "Uniéndose a la sala..."
-	host_button.disabled = true
-	join_button.disabled = true 
-	Steam.joinLobby(lobby_id)
-
-func _on_lobby_created(connect: int, lobby_id: int):
-	if connect == 1:
-		steam_lobby_id = lobby_id 
-		print("Lobby de Steam creado: ID " + str(lobby_id))
-		
-		var name_lobby = "Partida de " + Steam.getPersonaName()
-		Steam.setLobbyData(lobby_id, "name", name_lobby)
-		
-		Steam.setLobbyData(lobby_id, "mode", str(current_game_type))
-		
-		Steam.setLobbyData(lobby_id, "game_version", GAME_VERSION_ID)
-		
-		DisplayServer.clipboard_set(str(lobby_id))
-		
-		peer = SteamMultiplayerPeer.new() 
-		var error = peer.create_host(0)
-		
-		if error == OK:
-			multiplayer.set_multiplayer_peer(peer)
-			status_label.text = "Lobby ID: " + str(lobby_id)
-			
-			_set_menu_visibility(false)
-			show_lobby(true) 
-			
-			Steam.allowP2PPacketRelay(true)
-		else:
-			status_label.text = "Fallo al crear Host"
-			host_button.disabled = false
-			print("Error socket: " + str(error))
-	else:
-		status_label.text = "Error de Steam al crear Lobby"
-		host_button.disabled = false
-
-func _on_lobby_joined(lobby_id: int, _permissions: int, _locked: bool, response: int):
-	if response == 1:
-		var id_owner = Steam.getLobbyOwner(lobby_id)
-		var my_steam_id = Steam.getSteamID()
-		
-		if id_owner == my_steam_id:
-			return 
-		
-		status_label.text = "Conectando al Host..."
-		
-		_set_menu_visibility(false)
-		
-		peer = SteamMultiplayerPeer.new() 
-		peer.create_client(id_owner, 0)
-		multiplayer.set_multiplayer_peer(peer)
-	else:
-		status_label.text = "Fallo al unirse."
-		host_button.disabled = false
-		join_button.disabled = false
-
-func _on_lobby_join_requested(lobby_id: int, _friend_id: int):
-	Steam.joinLobby(lobby_id)
-
-
-func _generate_connect4_grid():
-	for child in grid_c4.get_children():
-		child.queue_free()
-	var total_slots = C4_COLS * C4_ROWS
-	for i in range(total_slots):
-		var btn = Button.new()
-		btn.custom_minimum_size = Vector2(12, 12) 
-		btn.name = str(i)
-		grid_c4.add_child(btn)
 
 func _on_game_mode_selected(index: int):
 	var selected_id = option_button.get_item_id(index)
@@ -348,29 +284,20 @@ func _on_game_mode_selected(index: int):
 
 @rpc("any_peer", "call_local", "reliable")
 func set_game_mode(mode_id: int):
-	current_game_type = mode_id
+	game_rules.setup_game(mode_id) 
 	
 	if multiplayer.is_server() and steam_lobby_id != 0:
-		Steam.setLobbyData(steam_lobby_id, "mode", str(current_game_type))
+		Steam.setLobbyData(steam_lobby_id, "mode", str(game_rules.current_type))
 	
-	if current_game_type == GameType.TIC_TAC_TOE:
-		current_cols = TTT_COLS
-		current_rows = TTT_ROWS
-		current_win_len = TTT_WIN_LEN
-		current_piece_size = PIECE_SIZE_TTT
+	current_piece_size = PIECE_SIZE_TTT if mode_id == GameRules.GameType.TIC_TAC_TOE else PIECE_SIZE_C4
+	
+	if mode_id == GameRules.GameType.TIC_TAC_TOE:
 		if is_game_active:
-			grid_c4.hide()
-			grid_ttt.show()
+			grid_c4.hide(); grid_ttt.show()
 		_update_cell_nodes_reference(grid_ttt)
-		
-	elif current_game_type == GameType.CONNECT_4:
-		current_cols = C4_COLS
-		current_rows = C4_ROWS
-		current_win_len = C4_WIN_LEN
-		current_piece_size = PIECE_SIZE_C4
+	elif mode_id == GameRules.GameType.CONNECT_4:
 		if is_game_active:
-			grid_ttt.hide()
-			grid_c4.show()
+			grid_ttt.hide(); grid_c4.show()
 		_update_cell_nodes_reference(grid_c4)
 	
 	_sync_option_button_ui()
@@ -378,15 +305,12 @@ func set_game_mode(mode_id: int):
 	if multiplayer.has_multiplayer_peer():
 		reset_game(true, not is_game_active)
 	else:
-		lobby_node.hide()
-		grid_ttt.hide()
-		grid_c4.hide()
-		
+		lobby_node.hide(); grid_ttt.hide(); grid_c4.hide()
+
 func _sync_option_button_ui():
 	for i in range(option_button.item_count):
-		if option_button.get_item_id(i) == current_game_type:
-			if option_button.selected != i:
-				option_button.select(i)
+		if option_button.get_item_id(i) == game_rules.current_type:
+			if option_button.selected != i: option_button.select(i)
 			break
 
 func _update_cell_nodes_reference(active_grid: GridContainer):
@@ -420,10 +344,10 @@ func attempt_place_piece(new_index: int, piece_path: String, target_pos: Vector2
 	if not multiplayer.has_multiplayer_peer():
 		status_label.text = "Primero debes unirte a un juego."
 		return
-	if board.is_empty() or new_index >= board.size(): return
+	if new_index >= game_rules.board.size(): return
 
-	if current_game_type == GameType.CONNECT_4 and new_index != -1:
-		new_index = _get_lowest_available_in_column(new_index)
+	if game_rules.current_type == GameRules.GameType.CONNECT_4 and new_index != -1:
+		new_index = game_rules.get_lowest_available_in_column(new_index)
 		if new_index == -1:
 			status_label.text = "Columna llena."
 			var p = get_node(piece_path)
@@ -433,7 +357,7 @@ func attempt_place_piece(new_index: int, piece_path: String, target_pos: Vector2
 			var target_cell = cell_nodes[new_index]
 			target_pos = target_cell.get_global_rect().get_center()
 
-	if new_index != -1 and board[new_index] != EMPTY and new_index != old_index:
+	if new_index != -1 and not game_rules.is_cell_empty(new_index) and new_index != old_index:
 		status_label.text = "Casilla ocupada."
 		var p = get_node(piece_path)
 		if p: p.return_to_last_valid_pos()
@@ -441,29 +365,27 @@ func attempt_place_piece(new_index: int, piece_path: String, target_pos: Vector2
 
 	rpc("place_piece", new_index, player_symbol, piece_path, target_pos, old_index)
 
-func _get_lowest_available_in_column(index: int) -> int:
-	var col = index % current_cols
-	for r in range(current_rows - 1, -1, -1):
-		var check_index = r * current_cols + col
-		if check_index < board.size() and board[check_index] == EMPTY:
-			return check_index
-	return -1 
-
 @rpc("any_peer", "call_local")
 func place_piece(new_index: int, symbol: int, piece_path: String, target_pos: Vector2, old_index: int):
-	if board.is_empty(): return
-	
 	if new_index != -1:
-		if new_index < 0 or new_index >= board.size(): return
-		if board[new_index] != EMPTY and new_index != old_index: return
+		if not game_rules.is_valid_index(new_index): return
+		if not game_rules.is_cell_empty(new_index) and new_index != old_index: return
 		
-	if old_index != -1:
-		if old_index >= 0 and old_index < board.size():
-			board[old_index] = EMPTY
+	if old_index != -1 and game_rules.is_valid_index(old_index):
+		game_rules.set_piece(old_index, 0) 
 	
 	if new_index != -1:
-		board[new_index] = symbol
+		game_rules.set_piece(new_index, symbol)
 	
+	_visual_move_piece(piece_path, target_pos, new_index)
+	
+	update_board_ui()
+	update_piece_counts_ui()
+	
+	if new_index != -1 and game_rules.check_win(symbol):
+		game_over(symbol)
+
+func _visual_move_piece(piece_path: String, target_pos: Vector2, new_index: int):
 	var piece_node: RigidBody2D = get_node(piece_path)
 	if is_instance_valid(piece_node):
 		piece_node.current_cell_index = new_index
@@ -474,7 +396,7 @@ func place_piece(new_index: int, symbol: int, piece_path: String, target_pos: Ve
 		piece_node.z_index = 0
 		
 		var final_pos = target_pos
-		if current_game_type == GameType.CONNECT_4 and new_index != -1:
+		if game_rules.current_type == GameRules.GameType.CONNECT_4 and new_index != -1:
 			var start_y = grid_c4.global_position.y - 100 
 			var start_pos = Vector2(final_pos.x, start_y)
 			piece_node.global_position = start_pos
@@ -483,37 +405,6 @@ func place_piece(new_index: int, symbol: int, piece_path: String, target_pos: Ve
 			tween.tween_property(piece_node, "global_position", final_pos, 0.8)
 		else:
 			piece_node.global_position = final_pos
-	
-	update_board_ui()
-	update_piece_counts_ui()
-	
-	if new_index != -1 and check_win(symbol):
-		game_over(symbol)
-
-func check_win(symbol: int) -> bool:
-	for r in range(current_rows):
-		for c in range(current_cols - current_win_len + 1):
-			if _check_line(symbol, r, c, 0, 1): return true
-	for r in range(current_rows - current_win_len + 1):
-		for c in range(current_cols):
-			if _check_line(symbol, r, c, 1, 0): return true
-	for r in range(current_rows - current_win_len + 1):
-		for c in range(current_cols - current_win_len + 1):
-			if _check_line(symbol, r, c, 1, 1): return true
-	for r in range(current_win_len - 1, current_rows):
-		for c in range(current_cols - current_win_len + 1):
-			if _check_line(symbol, r, c, -1, 1): return true
-	return false
-
-func _check_line(symbol: int, start_r: int, start_c: int, step_r: int, step_c: int) -> bool:
-	for i in range(current_win_len):
-		var r = start_r + step_r * i
-		var c = start_c + step_c * i
-		var idx = r * current_cols + c
-		if idx >= board.size(): return false
-		if board[idx] != symbol:
-			return false
-	return true
 
 func game_over(winning_symbol: int):
 	await get_tree().create_timer(1.5).timeout
@@ -521,7 +412,7 @@ func game_over(winning_symbol: int):
 	var result_color = Color.WHITE
 	if winning_symbol != 0:
 		var winner_name = ""
-		if current_game_type == GameType.TIC_TAC_TOE:
+		if game_rules.current_type == GameRules.GameType.TIC_TAC_TOE:
 			winner_name = "AZUL (X)" if winning_symbol == PLAYER_X else "ROJO (O)"
 		else:
 			winner_name = "AZUL" if winning_symbol == PLAYER_X else "ROJO"
@@ -543,21 +434,17 @@ func _on_ResetTimer_timeout():
 @rpc("call_local", "reliable")
 func return_to_lobby():
 	reset_game(true, true)
-	grid_ttt.hide()
-	grid_c4.hide()
+	grid_ttt.hide(); grid_c4.hide()
 	set_pieces_visible(false)
-	
 	if multiplayer.is_server():
 		status_label.text = "Partida finalizada. Configura la siguiente."
 	else:
 		status_label.text = "Esperando al anfitrión..."
 
 func reset_game(keep_peer: bool = false, show_lobby_ui: bool = true):
-	var total_cells = current_cols * current_rows
-	board.resize(total_cells)
-	board.fill(EMPTY)
+	game_rules.reset_board()
 	
-	var max_p = MAX_PIECES_TTT if current_game_type == GameType.TIC_TAC_TOE else MAX_PIECES_C4
+	var max_p = MAX_PIECES_TTT if game_rules.current_type == GameRules.GameType.TIC_TAC_TOE else MAX_PIECES_C4
 	pieces_left_X = max_p
 	pieces_left_O = max_p
 	is_game_active = false
@@ -583,16 +470,12 @@ func reset_game(keep_peer: bool = false, show_lobby_ui: bool = true):
 	if not keep_peer or not multiplayer.has_multiplayer_peer():
 		player_o_net_id = PLAYER_O
 		for peer_id in remote_cursors:
-			if is_instance_valid(remote_cursors[peer_id]):
-				remote_cursors[peer_id].queue_free()
+			if is_instance_valid(remote_cursors[peer_id]): remote_cursors[peer_id].queue_free()
 		remote_cursors.clear()
-		
 		_set_menu_visibility(true) 
 		host_button.disabled = false
 		join_button.disabled = false
-		
-		grid_ttt.hide()
-		grid_c4.hide()
+		grid_ttt.hide(); grid_c4.hide()
 		set_pieces_visible(false)
 		lobby_node.hide()
 		status_label.text = "Crea o busca una partida."
@@ -620,10 +503,10 @@ func reset_all_pieces_visuals():
 						piece.apply_visual_size()
 						piece.update_symbol()
 
+
 func _on_connected_to_server():
 	status_label.text = "¡Conectado! Esperando al Host..."
-	if not multiplayer.is_server():
-		show_lobby(false)
+	if not multiplayer.is_server(): show_lobby(false)
 
 func _connection_failed():
 	status_label.text = "Error de conexión."
@@ -632,41 +515,37 @@ func _connection_failed():
 
 func _player_connected(id: int):
 	if multiplayer.is_server():
-		rpc_id(id, "update_lobby_state", lobby_players)
+		rpc_id(id, "update_lobby_state", lobby_manager.lobby_players)
 		if is_game_active:
-			rpc_id(id, "sync_game_state", board, pieces_left_X, pieces_left_O, player_o_net_id, current_game_type)
+			rpc_id(id, "sync_game_state", game_rules.board, pieces_left_X, pieces_left_O, player_o_net_id, game_rules.current_type)
 
 func _player_disconnected(id: int):
-	if lobby_players.has(id):
-		lobby_players.erase(id)
+	if lobby_manager.lobby_players.has(id):
+		lobby_manager.remove_player(id)
 		if multiplayer.is_server():
-			rpc("update_lobby_state", lobby_players)
+			rpc("update_lobby_state", lobby_manager.lobby_players)
 	if is_game_active:
 		status_label.text = "Jugador desconectado."
 	if remote_cursors.has(id):
-		if is_instance_valid(remote_cursors[id]):
-			remote_cursors[id].queue_free()
+		if is_instance_valid(remote_cursors[id]): remote_cursors[id].queue_free()
 		remote_cursors.erase(id)
 
 @rpc("any_peer", "call_local", "reliable") 
 func sync_game_state(new_board: Array[int], new_pieces_X: int, new_pieces_O: int, new_player_o_net_id: int, game_mode: int): 
 	set_game_mode(game_mode)
-	board = new_board
+	game_rules.board = new_board
 	pieces_left_X = new_pieces_X
 	pieces_left_O = new_pieces_O
 	player_o_net_id = new_player_o_net_id
 	
 	update_board_ui()
 	update_piece_counts_ui()
-	
 	_set_menu_visibility(false) 
 	
-	if current_game_type == GameType.TIC_TAC_TOE:
-		grid_ttt.show()
-		grid_c4.hide()
+	if game_rules.current_type == GameRules.GameType.TIC_TAC_TOE:
+		grid_ttt.show(); grid_c4.hide()
 	else:
-		grid_ttt.hide()
-		grid_c4.show()
+		grid_ttt.hide(); grid_c4.show()
 		
 	set_pieces_visible(true)
 	reset_all_pieces_visuals()
@@ -687,21 +566,17 @@ func send_cursor_info(position: Vector2, color: Color):
 	if is_instance_valid(remote_cursors[sender_id]):
 		remote_cursors[sender_id].global_position = position
 		var p_name = ""
-		if lobby_players.has(sender_id):
-			p_name = lobby_players[sender_id].name
+		if lobby_manager.get_player_data(sender_id):
+			p_name = lobby_manager.get_player_data(sender_id).name
 		remote_cursors[sender_id].set_cursor_info(p_name, color)
 
 func update_board_ui():
 	for i in range(cell_nodes.size()):
 		var cell = cell_nodes[i]
-		if cell is Button:
-			cell.text = "" 
+		if cell is Button: cell.text = "" 
 
 func update_piece_counts_ui():
-	var p1_player = "X"
-	var p2_player = "O"
-	var p1_piece = "X"
-	var p2_piece = "O"
+	var p1_player = "X"; var p2_player = "O"; var p1_piece = "X"; var p2_piece = "O"
 	var my_text = "Espectador"
 	if player_symbol == PLAYER_X: my_text = p1_player
 	elif player_symbol == PLAYER_O: my_text = p2_player
@@ -719,6 +594,18 @@ func show_lobby(is_host: bool):
 	start_game_button.disabled = not is_host
 	start_game_button.visible = is_host
 	update_lobby_ui()
+	
+func _generate_connect4_grid():
+	for child in grid_c4.get_children(): 
+		child.queue_free()
+	
+	var total_slots = GameRules.C4_COLS * GameRules.C4_ROWS
+	
+	for i in range(total_slots):
+		var btn = Button.new()
+		btn.custom_minimum_size = Vector2(12, 12) 
+		btn.name = str(i)
+		grid_c4.add_child(btn)
 
 
 func _on_slot_pressed(team: int, slot_idx: int):
@@ -729,40 +616,21 @@ func _on_slot_pressed(team: int, slot_idx: int):
 func request_slot_selection(requesting_id: int, team: int, slot_idx: int, player_name: String):
 	if not multiplayer.is_server(): return
 	
-	for pid in lobby_players:
-		var p_data = lobby_players[pid]
-		if p_data.team == team and p_data.slot_idx == slot_idx:
-			return 
+	if lobby_manager.is_slot_taken(team, slot_idx):
+		return 
 	
-
 	if steam_lobby_id == 0:
-		var taken_numbers = []
-		for pid in lobby_players:
-			var p_name = lobby_players[pid]["name"]
-			if p_name.begins_with("Jugador "):
-				var num_str = p_name.trim_prefix("Jugador ")
-				if num_str.is_valid_int():
-					taken_numbers.append(int(num_str))
-		
-		var new_number = 1
-		while new_number in taken_numbers:
-			new_number += 1
-			
-		player_name = "Jugador " + str(new_number)
+		player_name = lobby_manager.get_unique_player_name(player_name)
 	
-	lobby_players[requesting_id] = {
-		"team": team,
-		"slot_idx": slot_idx,
-		"color": Color.WHITE,
-		"name": player_name 
-	}
-	rpc("update_lobby_state", lobby_players)
+	lobby_manager.add_player(requesting_id, team, slot_idx, player_name)
+	rpc("update_lobby_state", lobby_manager.lobby_players)
 
 func _on_color_input(event: InputEvent, panel: Panel, team_color: int):
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		var my_id = multiplayer.get_unique_id()
-		if not lobby_players.has(my_id): return
-		if lobby_players[my_id].team != team_color: return
+		var p_data = lobby_manager.get_player_data(my_id)
+		if not p_data: return
+		if p_data.team != team_color: return
 		var style = panel.get_theme_stylebox("panel")
 		if style is StyleBoxFlat:
 			my_selected_color = style.bg_color
@@ -771,13 +639,12 @@ func _on_color_input(event: InputEvent, panel: Panel, team_color: int):
 @rpc("any_peer", "call_local")
 func request_color_change(id: int, new_color: Color):
 	if not multiplayer.is_server(): return
-	if lobby_players.has(id):
-		lobby_players[id]["color"] = new_color
-		rpc("update_lobby_state", lobby_players)
+	lobby_manager.update_player_color(id, new_color)
+	rpc("update_lobby_state", lobby_manager.lobby_players)
 
 @rpc("authority", "call_local", "reliable")
 func update_lobby_state(new_lobby_data: Dictionary):
-	lobby_players = new_lobby_data
+	lobby_manager.update_lobby_data(new_lobby_data)
 	update_lobby_ui()
 
 func update_lobby_ui():
@@ -792,8 +659,9 @@ func update_lobby_ui():
 	var my_team = -1
 	var my_current_color = Color.TRANSPARENT 
 	
-	for pid in lobby_players:
-		var data = lobby_players[pid]
+	var players = lobby_manager.lobby_players
+	for pid in players:
+		var data = players[pid]
 		var team = data.team
 		var idx = data.slot_idx
 		var p_name = data.name 
@@ -821,17 +689,15 @@ func update_lobby_ui():
 				sb.border_width_right = 0
 				sb.border_width_bottom = 0
 				if my_team == team_id and sb.bg_color.is_equal_approx(my_current_color):
-					sb.border_width_left = 5
-					sb.border_width_top = 5
-					sb.border_width_right = 5
-					sb.border_width_bottom = 5
+					sb.border_width_left = 5; sb.border_width_top = 5
+					sb.border_width_right = 5; sb.border_width_bottom = 5
 					sb.border_color = Color.WHITE
 
 	update_visuals.call(colors_team1, 1)
 	update_visuals.call(colors_team2, 2)
 
 func _on_start_game_pressed():
-	rpc("sync_game_state", board, pieces_left_X, pieces_left_O, player_o_net_id, current_game_type)
+	rpc("sync_game_state", game_rules.board, pieces_left_X, pieces_left_O, player_o_net_id, game_rules.current_type)
 	rpc("start_match_from_lobby")
 
 @rpc("call_local", "reliable")
@@ -840,7 +706,7 @@ func start_match_from_lobby():
 	is_game_active = true
 	update_piece_counts_ui()
 	set_pieces_visible(true)
-	if current_game_type == GameType.TIC_TAC_TOE:
+	if game_rules.current_type == GameRules.GameType.TIC_TAC_TOE:
 		grid_ttt.show()
 	else:
 		grid_c4.show()
