@@ -100,7 +100,6 @@ func request_drag_authority():
 	var sender_id = multiplayer.get_remote_sender_id()
 	if not multiplayer.is_server(): return
 	
-	# CORRECCIÓN: Accedemos a través de lobby_manager
 	if main_script.lobby_manager.lobby_players.has(sender_id):
 		if main_script.lobby_manager.lobby_players[sender_id].team == player_symbol:
 			rpc("set_new_authority", sender_id)
@@ -152,7 +151,6 @@ func _input(event):
 	var my_id = multiplayer.get_unique_id()
 	
 	var my_team = 0
-	# CORRECCIÓN: Accedemos a través de lobby_manager
 	if main_script.lobby_manager.lobby_players.has(my_id):
 		my_team = main_script.lobby_manager.lobby_players[my_id].team
 	
@@ -187,7 +185,6 @@ func _input(event):
 					
 					if new_cell_index != -1:
 						var is_occupied = false
-						# CORRECCIÓN: Usamos game_rules.board y GameRules.EMPTY
 						if not main_script.game_rules.board.is_empty() and new_cell_index < main_script.game_rules.board.size():
 							is_occupied = main_script.game_rules.board[new_cell_index] != GameRules.EMPTY
 						

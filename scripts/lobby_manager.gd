@@ -29,7 +29,6 @@ func is_slot_taken(team: int, slot_idx: int) -> bool:
 	return false
 
 func get_unique_player_name(base_name: String) -> String:
-	# Si ya tenemos lógica de nombres Steam, esto sirve para fallbacks o IP directa
 	var taken_numbers = []
 	for pid in lobby_players:
 		var p_name = lobby_players[pid]["name"]

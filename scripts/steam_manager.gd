@@ -14,7 +14,6 @@ var steam_username: String = ""
 func _ready() -> void:
 	_initialize_steam()
 	
-	# Conectar señales internas de Steam
 	Steam.lobby_created.connect(_on_lobby_created)
 	Steam.lobby_joined.connect(_on_lobby_joined)
 	Steam.lobby_match_list.connect(_on_lobby_match_list)
@@ -34,7 +33,6 @@ func _initialize_steam() -> void:
 	steam_username = Steam.getPersonaName()
 	emit_signal("steam_initialized")
 
-# --- Funciones Públicas para Main ---
 
 func create_lobby(type, max_players):
 	if Steam.isSteamRunning():
@@ -51,11 +49,9 @@ func refresh_lobby_list(game_version: String):
 		Steam.requestLobbyList()
 
 func setup_lobby_data(lobby_id: int, data: Dictionary):
-	# data espera claves como "name", "mode", "game_version"
 	for key in data:
 		Steam.setLobbyData(lobby_id, key, str(data[key]))
 
-# --- Callbacks Internos ---
 
 func _on_lobby_created(connect: int, lobby_id: int):
 	if connect == 1:

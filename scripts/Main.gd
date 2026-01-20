@@ -1,10 +1,8 @@
 extends Node2D
 
-# Instancia de clases lógicas
 var game_rules = GameRules.new()
 var lobby_manager = LobbyManager.new()
 
-# Referencia al SteamManager (Asegúrate de tener este nodo en la escena o Autoload)
 @onready var steam_manager = $SteamManager 
 
 const PLAYER_X = 1
@@ -37,7 +35,6 @@ var steam_lobby_id: int = 0
 
 var my_selected_color: Color = Color.WHITE
 
-# Nodos UI
 @onready var grid_ttt: GridContainer = $tresenraya
 @onready var grid_c4: GridContainer = $Conecta4
 @onready var option_button: OptionButton = $OptionButton
@@ -67,7 +64,7 @@ var my_selected_color: Color = Color.WHITE
 @onready var steam_check: CheckBox = $SteamCheckBox 
 
 func _ready():
-	# Inicializar lógica base
+
 	game_rules.setup_game(GameRules.GameType.TIC_TAC_TOE)
 	
 	peer = SteamMultiplayerPeer.new()
@@ -77,13 +74,11 @@ func _ready():
 	if ResourceLoader.exists(PIECE_SCENE_PATH):
 		piece_scene = load(PIECE_SCENE_PATH)
 	
-	# Conexiones Multiplayer
 	multiplayer.peer_connected.connect(_player_connected)
 	multiplayer.peer_disconnected.connect(_player_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_connection_failed)
 	
-	# Conexiones SteamManager
 	if steam_manager:
 		steam_manager.lobby_created_success.connect(_on_steam_lobby_created_success)
 		steam_manager.lobby_created_fail.connect(func(): status_label.text = "Error al crear Lobby Steam")
@@ -91,7 +86,6 @@ func _ready():
 		steam_manager.lobby_join_fail.connect(func(): status_label.text = "Fallo al unirse.")
 		steam_manager.lobby_list_updated.connect(_on_steam_lobby_list_updated)
 	
-	# UI Conexiones
 	btn_add_x.pressed.connect(_on_add_piece_pressed.bind(PLAYER_X))
 	btn_add_o.pressed.connect(_on_add_piece_pressed.bind(PLAYER_O))
 	option_button.item_selected.connect(_on_game_mode_selected)
@@ -121,13 +115,11 @@ func _ready():
 	_connect_lobby_ui_slots()
 
 func _process(_delta):
-	# Steam.run_callbacks() ya lo maneja steam_manager si lo tienes en process
 	if multiplayer.has_multiplayer_peer():
 		if multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
 			var mouse_pos = get_viewport().get_mouse_position()
 			rpc("send_cursor_info", mouse_pos, my_selected_color)
 
-# --- CONFIGURACIÓN E INICIALIZACIÓN ---
 
 func _initialize_initial_pieces():
 	for child in piece_container.get_children():
@@ -172,7 +164,6 @@ func _set_menu_visibility(is_visible: bool):
 		for child in lobby_list_container.get_children():
 			child.queue_free()
 
-# --- RED Y LOBBY (HOST / JOIN) ---
 
 func _on_HostButton_pressed():
 	if steam_check and steam_check.button_pressed:
@@ -212,7 +203,6 @@ func _on_JoinButton_pressed():
 		else:
 			status_label.text = "Error al conectar."
 
-# Respuestas de SteamManager
 func _on_steam_lobby_created_success(lobby_id: int):
 	steam_lobby_id = lobby_id
 	print("Lobby de Steam creado: ID " + str(lobby_id))
@@ -278,7 +268,6 @@ func _on_steam_lobby_list_updated(lobbies: Array):
 		btn.pressed.connect(func(): steam_manager.join_lobby(lobby_id))
 		lobby_list_container.add_child(btn)
 
-# --- GESTIÓN DEL JUEGO (GAMEPLAY) ---
 
 func _on_game_mode_selected(index: int):
 	var selected_id = option_button.get_item_id(index)
@@ -295,7 +284,7 @@ func _on_game_mode_selected(index: int):
 
 @rpc("any_peer", "call_local", "reliable")
 func set_game_mode(mode_id: int):
-	game_rules.setup_game(mode_id) # Delegar lógica a GameRules
+	game_rules.setup_game(mode_id) 
 	
 	if multiplayer.is_server() and steam_lobby_id != 0:
 		Steam.setLobbyData(steam_lobby_id, "mode", str(game_rules.current_type))
@@ -357,7 +346,6 @@ func attempt_place_piece(new_index: int, piece_path: String, target_pos: Vector2
 		return
 	if new_index >= game_rules.board.size(): return
 
-	# Delegamos lógica de columnas a GameRules
 	if game_rules.current_type == GameRules.GameType.CONNECT_4 and new_index != -1:
 		new_index = game_rules.get_lowest_available_in_column(new_index)
 		if new_index == -1:
@@ -369,7 +357,6 @@ func attempt_place_piece(new_index: int, piece_path: String, target_pos: Vector2
 			var target_cell = cell_nodes[new_index]
 			target_pos = target_cell.get_global_rect().get_center()
 
-	# Usamos GameRules para validar ocupación
 	if new_index != -1 and not game_rules.is_cell_empty(new_index) and new_index != old_index:
 		status_label.text = "Casilla ocupada."
 		var p = get_node(piece_path)
@@ -380,13 +367,12 @@ func attempt_place_piece(new_index: int, piece_path: String, target_pos: Vector2
 
 @rpc("any_peer", "call_local")
 func place_piece(new_index: int, symbol: int, piece_path: String, target_pos: Vector2, old_index: int):
-	# Validaciones simples antes de mover
 	if new_index != -1:
 		if not game_rules.is_valid_index(new_index): return
 		if not game_rules.is_cell_empty(new_index) and new_index != old_index: return
 		
 	if old_index != -1 and game_rules.is_valid_index(old_index):
-		game_rules.set_piece(old_index, 0) # 0 = EMPTY
+		game_rules.set_piece(old_index, 0) 
 	
 	if new_index != -1:
 		game_rules.set_piece(new_index, symbol)
@@ -517,7 +503,6 @@ func reset_all_pieces_visuals():
 						piece.apply_visual_size()
 						piece.update_symbol()
 
-# --- CALLBACKS RED GENÉRICOS ---
 
 func _on_connected_to_server():
 	status_label.text = "¡Conectado! Esperando al Host..."
@@ -530,7 +515,6 @@ func _connection_failed():
 
 func _player_connected(id: int):
 	if multiplayer.is_server():
-		# Enviamos datos del LobbyManager
 		rpc_id(id, "update_lobby_state", lobby_manager.lobby_players)
 		if is_game_active:
 			rpc_id(id, "sync_game_state", game_rules.board, pieces_left_X, pieces_left_O, player_o_net_id, game_rules.current_type)
@@ -623,7 +607,6 @@ func _generate_connect4_grid():
 		btn.name = str(i)
 		grid_c4.add_child(btn)
 
-# --- LOBBY SLOTS & COLORS (USANDO LOBBYMANAGER) ---
 
 func _on_slot_pressed(team: int, slot_idx: int):
 	var my_steam_name = get_player_name()
