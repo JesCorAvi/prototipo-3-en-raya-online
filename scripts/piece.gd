@@ -100,8 +100,9 @@ func request_drag_authority():
 	var sender_id = multiplayer.get_remote_sender_id()
 	if not multiplayer.is_server(): return
 	
-	if main_script.lobby_players.has(sender_id):
-		if main_script.lobby_players[sender_id].team == player_symbol:
+	# CORRECCIÓN: Accedemos a través de lobby_manager
+	if main_script.lobby_manager.lobby_players.has(sender_id):
+		if main_script.lobby_manager.lobby_players[sender_id].team == player_symbol:
 			rpc("set_new_authority", sender_id)
 
 @rpc("any_peer", "call_local")
@@ -151,8 +152,9 @@ func _input(event):
 	var my_id = multiplayer.get_unique_id()
 	
 	var my_team = 0
-	if main_script.lobby_players.has(my_id):
-		my_team = main_script.lobby_players[my_id].team
+	# CORRECCIÓN: Accedemos a través de lobby_manager
+	if main_script.lobby_manager.lobby_players.has(my_id):
+		my_team = main_script.lobby_manager.lobby_players[my_id].team
 	
 	if my_team != player_symbol: return 
 		
@@ -185,8 +187,9 @@ func _input(event):
 					
 					if new_cell_index != -1:
 						var is_occupied = false
-						if not main_script.board.is_empty() and new_cell_index < main_script.board.size():
-							is_occupied = main_script.board[new_cell_index] != main_script.EMPTY
+						# CORRECCIÓN: Usamos game_rules.board y GameRules.EMPTY
+						if not main_script.game_rules.board.is_empty() and new_cell_index < main_script.game_rules.board.size():
+							is_occupied = main_script.game_rules.board[new_cell_index] != GameRules.EMPTY
 						
 						var is_same_cell = (new_cell_index == current_cell_index)
 						
